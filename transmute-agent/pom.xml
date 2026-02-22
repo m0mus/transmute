@@ -52,6 +52,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- JDK HTTP client (for HTTP 1.1 forcing with OpenAI-compatible local LLMs) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-http-client-jdk</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+
         <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>

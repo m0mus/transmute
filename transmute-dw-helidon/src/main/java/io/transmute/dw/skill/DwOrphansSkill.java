@@ -21,10 +21,10 @@ import java.util.List;
  *
  * <p>Triggered when any file imports Dropwizard or Codahale classes.
  * Runs PROJECT-wide (not per-file) because DwOrphansHandler walks the directory itself.
- * Runs after PomMigrationSkill (order=5) so the POM is already converted first.
+ * Runs after JaxrsAnnotationsSkill (order=10) so JAX-RS resource classes are migrated first.
  */
-@Skill(value = "DW Orphans", order = 5, scope = SkillScope.PROJECT,
-       after = {PomMigrationSkill.class})
+@Skill(value = "DW Orphans", order = 10, scope = SkillScope.PROJECT,
+       after = {JaxrsAnnotationsSkill.class})
 @Trigger(imports = {"io.dropwizard.", "com.codahale.metrics."})
 public class DwOrphansSkill implements MigrationSkill {
 

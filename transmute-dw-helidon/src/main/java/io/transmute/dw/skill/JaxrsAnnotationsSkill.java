@@ -30,10 +30,10 @@ import java.util.Map;
  *   <li>Text-based post-processing: Produces/Consumes TODOs, View migration, @Context, media type TODOs</li>
  * </ul>
  *
- * <p>Runs PROJECT-wide (order=10), after DwOrphansSkill.
+ * <p>Runs PROJECT-wide (order=5), after PomMigrationSkill.
  */
-@Skill(value = "JAX-RS Annotations", order = 10, scope = SkillScope.PROJECT,
-       after = {DwOrphansSkill.class})
+@Skill(value = "JAX-RS Annotations", order = 5, scope = SkillScope.PROJECT,
+       after = {PomMigrationSkill.class})
 @Trigger(imports = {"javax.ws.rs.", "jakarta.ws.rs."})
 @Postchecks(forbidImports = {"javax.ws.rs.", "jakarta.ws.rs."})
 public class JaxrsAnnotationsSkill implements MigrationSkill {

@@ -54,7 +54,14 @@ public class CompileProjectTool {
             var process = pb.start();
             String output;
             try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                output = reader.lines().collect(Collectors.joining("\n"));
+                output = reader.lines()
+                        .filter(l -> !l.startsWith("WARNING:")
+                                && !l.startsWith("[WARNING]")
+                                && !l.contains("To see the full stack trace")
+                                && !l.contains("Re-run Maven using the -X switch")
+                                && !l.contains("For more information about the errors")
+                                && !l.matches("\\[ERROR\\]\\s*"))
+                        .collect(Collectors.joining("\n"));
             }
 
             var exitCode = process.waitFor();

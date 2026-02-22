@@ -192,11 +192,13 @@ public class DwOrphansHandler {
                 "// DW_MIGRATION_TODO[manual]: " + simpleName + " has no Helidon equivalent - replace with Helidon metrics/security API\n"
                         + "// $1" + simpleName + " $2");
 
-        // NOTE: replacement must NOT contain "@Auth" to avoid idempotency issues
+        // NOTE: replacement must NOT contain "@Auth" to avoid idempotency issues.
+        // @Http.Entity is used so Helidon's codegen has a registered parameter handler;
+        // the developer must replace this with proper Helidon Security integration.
         if ("Auth".equals(simpleName)) {
             result = result.replaceAll(
                     "@Auth\\b",
-                    "/* DW_MIGRATION_TODO[manual]: auth annotation removed - implement Helidon Security */");
+                    "@Http.Entity /* DW_MIGRATION_TODO[manual]: was @Auth - integrate Helidon Security */");
         }
 
         // NOTE: replacement must NOT contain "@UnitOfWork" for the same reason

@@ -1,5 +1,6 @@
 package io.transmute.agent;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -13,6 +14,8 @@ public record MigrationConfig(
         String modelId,
         String apiKey,
         String baseUrl,
+        Integer modelTimeoutSeconds,
+        boolean forceHttp1,
         String ociProfile,
         boolean autoApprove,
         boolean verbose,
@@ -34,6 +37,8 @@ public record MigrationConfig(
                 env("TRANSMUTE_MODEL_ID", null),
                 env("TRANSMUTE_API_KEY", null),
                 env("TRANSMUTE_MODEL_BASE_URL", null),
+                envInt("TRANSMUTE_MODEL_TIMEOUT_SECONDS", null),
+                envBool("TRANSMUTE_FORCE_HTTP1", false),
                 env("OCI_PROFILE", "DEFAULT"),
                 envBool("TRANSMUTE_AUTO_APPROVE", false),
                 envBool("TRANSMUTE_VERBOSE", false),
@@ -52,6 +57,13 @@ public record MigrationConfig(
         return baseUrl != null ? baseUrl : defaultUrl;
     }
 
+    public Duration modelTimeout(Duration defaultTimeout) {
+        if (modelTimeoutSeconds == null || modelTimeoutSeconds <= 0) {
+            return defaultTimeout;
+        }
+        return Duration.ofSeconds(modelTimeoutSeconds);
+    }
+
     /**
      * Parse CLI arguments into a MigrationConfig.
      *
@@ -62,6 +74,7 @@ public record MigrationConfig(
      *   --model-id &lt;id&gt;
      *   --api-key &lt;key&gt;
      *   --base-url &lt;url&gt;
+     *   --model-timeout-seconds &lt;seconds&gt;
      *   --oci-profile &lt;name&gt;
      *   --auto-approve
      *   --verbose
@@ -78,6 +91,8 @@ public record MigrationConfig(
         String modelId = env("TRANSMUTE_MODEL_ID", null);
         String apiKey = env("TRANSMUTE_API_KEY", null);
         String baseUrl = env("TRANSMUTE_MODEL_BASE_URL", null);
+        Integer modelTimeoutSeconds = envInt("TRANSMUTE_MODEL_TIMEOUT_SECONDS", null);
+        boolean forceHttp1 = envBool("TRANSMUTE_FORCE_HTTP1", false);
         String ociProfile = env("OCI_PROFILE", "DEFAULT");
         boolean autoApprove = envBool("TRANSMUTE_AUTO_APPROVE", false);
         boolean verbose = envBool("TRANSMUTE_VERBOSE", false);
@@ -94,6 +109,10 @@ public record MigrationConfig(
                 case "--model-id"            -> { if (i + 1 < args.length) modelId = args[++i]; }
                 case "--api-key"             -> { if (i + 1 < args.length) apiKey = args[++i]; }
                 case "--base-url"            -> { if (i + 1 < args.length) baseUrl = args[++i]; }
+                case "--model-timeout-seconds" -> {
+                    if (i + 1 < args.length) modelTimeoutSeconds = parseIntOrNull(args[++i]);
+                }
+                case "--force-http1"         -> forceHttp1 = true;
                 case "--oci-profile"         -> { if (i + 1 < args.length) ociProfile = args[++i]; }
                 case "--skills-package"      -> { if (i + 1 < args.length) skillsPackages.add(args[++i]); }
                 case "--profile"             -> { if (i + 1 < args.length) activeProfiles.add(args[++i]); }
@@ -109,6 +128,7 @@ public record MigrationConfig(
         }
 
         return new MigrationConfig(projectDir, outputDir, modelProvider, modelId, apiKey, baseUrl,
+                modelTimeoutSeconds, forceHttp1,
                 ociProfile, autoApprove, verbose, dryRun, skillsPackages, activeProfiles, allowOrderConflicts);
     }
 
@@ -126,5 +146,24 @@ public record MigrationConfig(
                 || value.equalsIgnoreCase("1")
                 || value.equalsIgnoreCase("yes")
                 || value.equalsIgnoreCase("y");
+    }
+
+    private static Integer envInt(String name, Integer defaultValue) {
+        return parseIntOrDefault(System.getenv(name), defaultValue);
+    }
+
+    private static Integer parseIntOrNull(String value) {
+        return parseIntOrDefault(value, null);
+    }
+
+    private static Integer parseIntOrDefault(String value, Integer defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 }

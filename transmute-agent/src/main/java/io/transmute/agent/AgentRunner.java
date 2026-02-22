@@ -20,6 +20,8 @@ import io.transmute.agent.workflow.MigrationWorkflow;
  *   --model-id &lt;id&gt;              Model ID (provider-specific default if not set)
  *   --api-key &lt;key&gt;              API key (for openai)
  *   --base-url &lt;url&gt;             Override endpoint URL (for ollama, proxies)
+ *   --model-timeout-seconds &lt;n&gt;   Override chat request timeout in seconds (OpenAI-compatible)
+ *   --force-http1                Force HTTP 1.1 for OpenAI-compatible local LLMs
  *   --oci-profile &lt;name&gt;         OCI config profile (default: DEFAULT)
  *   --auto-approve               Skip human approval gates (non-interactive)
  *   --verbose                    Verbose tool progress logging
@@ -48,6 +50,13 @@ public class AgentRunner {
 
         System.out.println("Transmute Migration Agent");
         System.out.println("  Model provider:  " + config.modelProvider());
+        System.out.println("  Model id:        " + resolvedModelId(config));
+        if (config.baseUrl() != null && !config.baseUrl().isBlank()) {
+            System.out.println("  Model base URL:  " + config.baseUrl());
+        }
+        if (config.forceHttp1()) {
+            System.out.println("  Force HTTP 1.1:  yes");
+        }
         System.out.println("  Project:         " + config.projectDir());
         System.out.println("  Output:          " + config.outputDir());
         System.out.println("  Skills packages: "
@@ -75,6 +84,15 @@ public class AgentRunner {
         }
     }
 
+    private static String resolvedModelId(MigrationConfig config) {
+        return switch (config.modelProvider()) {
+            case "oci-genai" -> config.modelId("cohere.command-r-plus");
+            case "openai" -> config.modelId("gpt-4o");
+            case "ollama" -> config.modelId("llama3.3");
+            default -> config.modelId();
+        };
+    }
+
     private static void printUsage() {
         System.out.println("""
             Transmute Migration Agent
@@ -93,6 +111,8 @@ public class AgentRunner {
               --model-id <id>              Model ID (provider-specific default if not set)
               --api-key <key>              API key (for openai)
               --base-url <url>             Override endpoint URL (for ollama, proxies)
+              --model-timeout-seconds <n>  Chat request timeout in seconds (OpenAI-compatible)
+              --force-http1               Force HTTP 1.1 (for local LLMs that don't support HTTP/2)
               --oci-profile <name>         OCI config profile (default: DEFAULT)
               --auto-approve               Skip human approval gates (non-interactive)
               --verbose                    Verbose tool progress logging
@@ -104,6 +124,8 @@ public class AgentRunner {
               TRANSMUTE_MODEL_ID           Model ID
               TRANSMUTE_API_KEY            API key
               TRANSMUTE_MODEL_BASE_URL     Base URL override
+              TRANSMUTE_MODEL_TIMEOUT_SECONDS  Chat request timeout in seconds
+              TRANSMUTE_FORCE_HTTP1        true/false to force HTTP 1.1
               TRANSMUTE_AUTO_APPROVE       true/false to skip approvals
               TRANSMUTE_VERBOSE            true/false for tool progress logging
               TRANSMUTE_DRY_RUN            true/false for dry run mode

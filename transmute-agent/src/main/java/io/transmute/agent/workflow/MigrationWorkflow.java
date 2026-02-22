@@ -9,10 +9,10 @@ import dev.langchain4j.agentic.observability.AgentMonitor;
 import io.transmute.agent.MigrationConfig;
 import io.transmute.agent.ModelFactory;
 import io.transmute.agent.WorkflowKeys;
+import io.transmute.agent.agent.AgentToolsConfig;
 import io.transmute.agent.agent.FixCompileErrorsAgent;
 import io.transmute.agent.agent.FixTestFailuresAgent;
 import io.transmute.catalog.*;
-import io.transmute.compile.CompileErrorAnalyzer;
 import io.transmute.compile.CompileErrorParser;
 import io.transmute.inventory.ProjectInventory;
 import io.transmute.skill.*;
@@ -23,7 +23,6 @@ import io.transmute.skill.postcheck.PostcheckRunner;
 import io.transmute.tool.CompileProjectTool;
 import io.transmute.tool.CopyProjectTool;
 import io.transmute.tool.RunTestsTool;
-import io.transmute.tool.ToolLog;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,6 +74,8 @@ public class MigrationWorkflow {
 
     public void run() throws Exception {
         System.out.println("=== Transmute Migration ===\n");
+
+        System.setProperty("transmute.aiSummary", String.valueOf(config.verbose()));
 
         migrationLog = new MigrationLog();
         projectState = new ProjectState();
@@ -153,14 +154,31 @@ public class MigrationWorkflow {
 
             System.out.println("  Skills in plan: " + plan.entries().size());
             for (var entry : plan.entries()) {
-                System.out.println("    - " + entry.skill().name()
-                        + " [" + entry.confidence() + "]"
-                        + " targets=" + entry.targetFiles().size());
+                var skillAnn = entry.skill().getClass().getAnnotation(Skill.class);
+                var skillScope = skillAnn != null ? skillAnn.scope() : SkillScope.FILE;
+                var line = new StringBuilder("    - ")
+                        .append(entry.skill().name())
+                        .append(" [").append(entry.confidence()).append("]")
+                        .append(" scope=").append(skillScope);
+                if (skillScope == SkillScope.FILE) {
+                    line.append(" files=").append(entry.targetFiles().size());
+                }
+                System.out.println(line);
+                if (skillScope == SkillScope.FILE && !entry.targetFiles().isEmpty()) {
+                    int shown = Math.min(5, entry.targetFiles().size());
+                    for (int i = 0; i < shown; i++) {
+                        System.out.println("        "
+                                + Path.of(entry.targetFiles().get(i)).getFileName());
+                    }
+                    if (entry.targetFiles().size() > shown) {
+                        System.out.println("        ... (" + (entry.targetFiles().size() - shown) + " more)");
+                    }
+                }
             }
         });
 
         var approvePlan = config.autoApprove()
-                ? AgenticServices.agentAction(() -> {})
+                ? AgenticServices.agentAction(() -> System.out.println("[5/10] Plan approved (auto-approve)."))
                 : AgenticServices.humanInTheLoopBuilder()
                         .description("Review the migration plan before executing skills")
                         .inputKey(WorkflowKeys.SKILLS_PLAN)
@@ -313,7 +331,6 @@ public class MigrationWorkflow {
         var announce = AgenticServices.agentAction(() ->
                 System.out.println("\n[8/10] Compile-fix loop (max "
                         + MAX_COMPILE_FIX_ITERATIONS + " iterations)..."));
-
         var compileStep = AgenticServices.agentAction(scope -> {
             System.out.println("  Compiling...");
             var result = new CompileProjectTool(config.activeProfiles())
@@ -328,15 +345,44 @@ public class MigrationWorkflow {
             }
         });
 
-        return buildFixLoop("Compile", announce, compileStep,
-                FixCompileErrorsAgent.class, WorkflowKeys.COMPILATION_SUCCESS, MAX_COMPILE_FIX_ITERATIONS);
+        var summarize = AgenticServices.agentAction(scope -> {
+            int iter = scope.readState(loopIterKey("Compile"), 0);
+            boolean success = scope.readState(WorkflowKeys.COMPILATION_SUCCESS, false);
+            String errors = scope.readState(WorkflowKeys.COMPILE_ERRORS, "");
+            int errorCount = 0;
+            int fileCount = 0;
+            String firstError = "";
+            if (!success && errors != null && !errors.isBlank() && inventory != null) {
+                var parsed = new CompileErrorParser(inventory).parse(errors);
+                errorCount = parsed.size();
+                fileCount = (int) parsed.stream()
+                        .map(io.transmute.compile.CompileError::file)
+                        .distinct()
+                        .count();
+                if (!parsed.isEmpty()) {
+                    firstError = parsed.get(0).message();
+                }
+            }
+            System.out.println("  [Compile] Iteration " + iter + "/"
+                    + MAX_COMPILE_FIX_ITERATIONS + " summary: "
+                    + (success ? "SUCCESS" : "FAIL")
+                    + (success ? "" : " errors=" + errorCount + " files=" + fileCount));
+            if (!success && firstError != null && !firstError.isBlank()) {
+                System.out.println("    First error: " + firstError);
+            }
+        });
+
+        AgentToolsConfig.outputDir = config.outputDir();
+        AgentToolsConfig.activeProfiles = config.activeProfiles();
+        return buildFixLoop("Compile", announce, compileStep, summarize,
+                FixCompileErrorsAgent.class, WorkflowKeys.COMPILATION_SUCCESS,
+                WorkflowKeys.COMPILE_ERRORS, MAX_COMPILE_FIX_ITERATIONS);
     }
 
     private List<Object> buildTestFixLoop() {
         var announce = AgenticServices.agentAction(() ->
                 System.out.println("\n[9/10] Test-fix loop (max "
                         + MAX_TEST_FIX_ITERATIONS + " iterations)..."));
-
         var testStep = AgenticServices.agentAction(scope -> {
             System.out.println("  Running tests...");
             var result = new RunTestsTool(config.activeProfiles())
@@ -347,8 +393,23 @@ public class MigrationWorkflow {
                     ? "  All tests passed!" : "  Tests failed.");
         });
 
-        return buildFixLoop("Test", announce, testStep,
-                FixTestFailuresAgent.class, WorkflowKeys.ALL_TESTS_PASS, MAX_TEST_FIX_ITERATIONS);
+        var summarize = AgenticServices.agentAction(scope -> {
+            int iter = scope.readState(loopIterKey("Test"), 0);
+            boolean success = scope.readState(WorkflowKeys.ALL_TESTS_PASS, false);
+            String output = scope.readState(WorkflowKeys.TEST_OUTPUT, "");
+            int lineCount = (output == null || output.isBlank())
+                    ? 0
+                    : output.split("\\R").length;
+            System.out.println("  [Test] Iteration " + iter + "/"
+                    + MAX_TEST_FIX_ITERATIONS + " summary: "
+                    + (success ? "SUCCESS" : "FAIL")
+                    + " outputLines=" + lineCount);
+        });
+
+        // AgentToolsConfig already set by buildCompileFixLoop; no need to re-set
+        return buildFixLoop("Test", announce, testStep, summarize,
+                FixTestFailuresAgent.class, WorkflowKeys.ALL_TESTS_PASS,
+                WorkflowKeys.TEST_OUTPUT, MAX_TEST_FIX_ITERATIONS);
     }
 
     private List<Object> buildReportStep() {
@@ -391,26 +452,46 @@ public class MigrationWorkflow {
             String label,
             Object announceStep,
             Object runStep,
+            Object perIterationSummary,
             Class<T> fixAgentClass,
             String successKey,
+            String errorKey,
             int maxIter) {
+        String iterKey = loopIterKey(label);
+        var bumpIter = AgenticServices.agentAction(scope -> {
+            int iter = scope.readState(iterKey, 0);
+            scope.writeState(iterKey, iter + 1);
+        });
         var fixAgent = AgenticServices.agentBuilder(fixAgentClass).build();
         var conditional = AgenticServices.conditionalBuilder()
                 .subAgents(scope -> !(Boolean) scope.readState(successKey, false), fixAgent)
                 .build();
         var loop = AgenticServices.loopBuilder()
                 .name(label + "FixLoop")
-                .subAgents(runStep, conditional)
+                .subAgents(bumpIter, runStep, conditional, perIterationSummary)
                 .maxIterations(maxIter)
                 .exitCondition(scope -> (Boolean) scope.readState(successKey, false))
                 .testExitAtLoopEnd(true)
                 .build();
         var check = AgenticServices.agentAction(scope -> {
             if (!(Boolean) scope.readState(successKey, false)) {
+                System.out.println("\n  [!] " + label + " fix loop exhausted after "
+                        + maxIter + " iterations without success.");
+                String lastErrors = scope.readState(errorKey, "");
+                if (lastErrors != null && !lastErrors.isBlank()) {
+                    System.out.println("  Persisting error:");
+                    printFirstLines(lastErrors, 15);
+                }
+                System.out.println("  Review the output directory manually: "
+                        + scope.readState(WorkflowKeys.OUTPUT_DIR, ""));
                 throw new RuntimeException(label + " failed after " + maxIter + " attempts.");
             }
         });
         return List.of(announceStep, loop, check);
+    }
+
+    private String loopIterKey(String label) {
+        return label.toLowerCase(Locale.ROOT) + "Iteration";
     }
 
     private ProjectInventory scanProject(String sourceDir) {

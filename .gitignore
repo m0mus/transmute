@@ -25,6 +25,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Local scripts (not committed)
+scripts/
+
 # Transmute run artifacts
 *-transmuted/
 migration-report.json

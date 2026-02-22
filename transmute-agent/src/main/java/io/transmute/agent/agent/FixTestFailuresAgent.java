@@ -23,6 +23,7 @@ public interface FixTestFailuresAgent {
         Fix test failures in the migrated project at {{outputDir}}.
         Test output: {{testOutput}}
 
+        Use outputDir-relative paths only (no absolute paths).
         Read the failing test files and the code they test, fix the issues,
         and write the corrected files.
         """)
@@ -38,6 +39,7 @@ public interface FixTestFailuresAgent {
 
     @ToolsSupplier
     static Object[] tools() {
-        return new MigrationTools(null, null).codeEditTools().toArray();
+        return new MigrationTools(AgentToolsConfig.outputDir, AgentToolsConfig.activeProfiles)
+                .codeEditTools().toArray();
     }
 }

@@ -23,6 +23,7 @@ public interface FixCompileErrorsAgent {
         Fix compilation errors in the migrated project at {{outputDir}}.
         Errors: {{compileErrors}}
 
+        Use outputDir-relative paths only (no absolute paths).
         Read each file with errors, fix the issues, and write the corrected files.
         """)
     @Agent(outputKey = "fixResult",
@@ -37,7 +38,7 @@ public interface FixCompileErrorsAgent {
 
     @ToolsSupplier
     static Object[] tools() {
-        // outputDir is unknown at interface definition time; agent wires it via scope
-        return new MigrationTools(null, null).codeEditTools().toArray();
+        return new MigrationTools(AgentToolsConfig.outputDir, AgentToolsConfig.activeProfiles)
+                .codeEditTools().toArray();
     }
 }

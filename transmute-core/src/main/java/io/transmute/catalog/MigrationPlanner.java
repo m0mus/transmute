@@ -1,12 +1,12 @@
 package io.transmute.catalog;
 
+import io.transmute.inventory.JavaFileInfo;
 import io.transmute.inventory.ProjectInventory;
 import io.transmute.skill.MigrationSkill;
 import io.transmute.skill.annotation.Skill;
 import io.transmute.skill.annotation.SkillScope;
 import io.transmute.skill.annotation.Trigger;
 import io.transmute.skill.annotation.Triggers;
-import io.transmute.skill.trigger.TriggerPredicates;
 
 import java.util.*;
 import java.util.regex.Pattern;
@@ -99,7 +99,7 @@ public class MigrationPlanner {
     }
 
     private boolean triggerMatchesAnyFile(Trigger trigger, ProjectInventory inventory, List<String> compileErrors) {
-        // For signals and compileErrors check without a file
+        // signals[]: AND — all listed signals must be present in inventory
         if (trigger.signals().length > 0) {
             for (var signal : trigger.signals()) {
                 if (!inventory.getSignals().contains(signal)) {
@@ -107,6 +107,7 @@ public class MigrationPlanner {
                 }
             }
         }
+        // compileErrors[]: AND — all regex patterns must match at least one error
         if (trigger.compileErrors().length > 0) {
             for (var regex : trigger.compileErrors()) {
                 var pattern = Pattern.compile(regex);
@@ -116,29 +117,41 @@ public class MigrationPlanner {
                 }
             }
         }
-        // File-level conditions
+        // File-level conditions — check if any file in the inventory satisfies this trigger
         if (trigger.imports().length == 0 && trigger.annotations().length == 0 && trigger.superTypes().length == 0) {
-            // Only non-file conditions (signals/errors) — already evaluated
+            // Only non-file conditions (signals/errors) — already evaluated above
             return true;
         }
-        return inventory.getJavaFiles().stream().anyMatch(file -> {
-            for (var imp : trigger.imports()) {
-                if (file.imports().stream().noneMatch(i -> i.startsWith(imp))) {
-                    return false;
-                }
-            }
-            for (var ann : trigger.annotations()) {
-                if (!file.annotationTypes().contains(ann)) {
-                    return false;
-                }
-            }
-            for (var superType : trigger.superTypes()) {
-                if (!file.superTypes().contains(superType)) {
-                    return false;
-                }
-            }
-            return true;
-        });
+        return inventory.getJavaFiles().stream().anyMatch(file -> fileMatchesTrigger(file, trigger));
+    }
+
+    /**
+     * Returns true if the given file satisfies all condition types in the trigger.
+     *
+     * <p>Within each condition type (imports, annotations, superTypes) the semantics are OR:
+     * the file needs to match <em>any</em> value in the array.
+     * Between condition types the semantics are AND: all non-empty arrays must produce a match.
+     */
+    private boolean fileMatchesTrigger(JavaFileInfo file, Trigger trigger) {
+        // imports[]: OR — file has any of the listed import prefixes
+        if (trigger.imports().length > 0) {
+            boolean anyMatch = Arrays.stream(trigger.imports())
+                    .anyMatch(imp -> file.imports().stream().anyMatch(i -> i.startsWith(imp)));
+            if (!anyMatch) return false;
+        }
+        // annotations[]: OR — file has any of the listed annotation types
+        if (trigger.annotations().length > 0) {
+            boolean anyMatch = Arrays.stream(trigger.annotations())
+                    .anyMatch(ann -> file.annotationTypes().contains(ann));
+            if (!anyMatch) return false;
+        }
+        // superTypes[]: OR — file extends/implements any of the listed types
+        if (trigger.superTypes().length > 0) {
+            boolean anyMatch = Arrays.stream(trigger.superTypes())
+                    .anyMatch(st -> file.superTypes().contains(st));
+            if (!anyMatch) return false;
+        }
+        return true;
     }
 
     // ── Target file resolution ────────────────────────────────────────────────
@@ -155,24 +168,7 @@ public class MigrationPlanner {
         }
 
         return inventory.getJavaFiles().stream()
-                .filter(file -> triggers.stream().anyMatch(trigger -> {
-                    for (var imp : trigger.imports()) {
-                        if (file.imports().stream().noneMatch(i -> i.startsWith(imp))) {
-                            return false;
-                        }
-                    }
-                    for (var ann : trigger.annotations()) {
-                        if (!file.annotationTypes().contains(ann)) {
-                            return false;
-                        }
-                    }
-                    for (var superType : trigger.superTypes()) {
-                        if (!file.superTypes().contains(superType)) {
-                            return false;
-                        }
-                    }
-                    return true;
-                }))
+                .filter(file -> triggers.stream().anyMatch(trigger -> fileMatchesTrigger(file, trigger)))
                 .map(f -> f.sourceFile())
                 .toList();
     }

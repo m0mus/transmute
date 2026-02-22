@@ -1,14 +1,18 @@
 package io.transmute.agent;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.List;
+
 import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider;
 import com.oracle.bmc.generativeaiinference.model.ServingMode;
+
 import dev.langchain4j.community.model.oracle.oci.genai.OciGenAiChatModel;
+import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import io.transmute.agent.logging.PromptLogListener;
-
-import java.util.List;
 
 /**
  * Factory for creating {@link ChatModel} instances based on {@link MigrationConfig}.
@@ -53,13 +57,20 @@ public class ModelFactory {
     }
 
     private static ChatModel createOpenAi(MigrationConfig config) {
+        var normalizedBaseUrl = normalizeOpenAiBaseUrl(config.baseUrl());
         var builder = OpenAiChatModel.builder()
-                .modelName(config.modelId("gpt-4o"));
+                .modelName(config.modelId("gpt-4o"))
+                .timeout(config.modelTimeout(Duration.ofSeconds(60)));
+        if (config.forceHttp1()) {
+            builder.httpClientBuilder(new JdkHttpClientBuilder()
+                    .httpClientBuilder(HttpClient.newBuilder()
+                            .version(HttpClient.Version.HTTP_1_1)));
+        }
         if (config.apiKey() != null) {
             builder.apiKey(config.apiKey());
         }
-        if (config.baseUrl() != null) {
-            builder.baseUrl(config.baseUrl());
+        if (normalizedBaseUrl != null) {
+            builder.baseUrl(normalizedBaseUrl);
         }
         if (PromptLogListener.enabled()) {
             builder.listeners(List.of(new PromptLogListener()));
@@ -75,5 +86,25 @@ public class ModelFactory {
             builder.listeners(List.of(new PromptLogListener()));
         }
         return builder.build();
+    }
+
+    private static String normalizeOpenAiBaseUrl(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return null;
+        }
+        var trimmed = baseUrl.trim();
+        if (trimmed.endsWith("/v1") || trimmed.contains("/v1/")) {
+            return trimmed;
+        }
+        try {
+            var uri = java.net.URI.create(trimmed);
+            var path = uri.getPath();
+            if (path == null || path.isBlank() || "/".equals(path)) {
+                return trimmed.endsWith("/") ? trimmed + "v1" : trimmed + "/v1";
+            }
+        } catch (IllegalArgumentException ignored) {
+            // If it's not a valid URI, leave it as-is and let the client surface the error.
+        }
+        return trimmed;
     }
 }
