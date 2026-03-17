@@ -59,8 +59,6 @@ public class TransmuteCli {
         }
         System.out.println("  Project:         " + config.projectDir());
         System.out.println("  Output:          " + config.outputDir());
-        System.out.println("  Skills packages: "
-                + (config.skillsPackages().isEmpty() ? "(none)" : config.skillsPackages()));
         System.out.println("  Dry run:         " + (config.dryRun() ? "yes" : "no"));
         System.out.println("  Auto-approve:    " + (config.autoApprove() ? "yes" : "no"));
         System.out.println("  Verbose:         " + (config.verbose() ? "yes" : "no"));

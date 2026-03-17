@@ -7,13 +7,9 @@ import java.util.List;
  * A markdown-defined recipe or feature that delegates its transformation to an AI agent.
  *
  * <p>Holds the parsed front-matter and markdown body of a {@code .recipe.md} or
- * {@code .feature.md} file. Does NOT invoke an agent directly — {@code MigrationWorkflow}
- * groups all recipes and features targeting the same file into a single agent invocation
+ * {@code .feature.md} file. Execution is handled entirely by {@code MigrationWorkflow},
+ * which groups all recipes targeting the same file into a single agent invocation
  * so all transformations are applied atomically.
- *
- * <p>{@link #apply(MigrationContext)} is kept for planner/postcheck compatibility but is not
- * the primary execution path — the workflow bypasses it and calls its own
- * {@code applyToFile} method instead.
  */
 public class AiMigration implements Migration, AiMigrationMetadata {
 
@@ -54,14 +50,6 @@ public class AiMigration implements Migration, AiMigrationMetadata {
     @Override
     public String name() {
         return name;
-    }
-
-    /**
-     * Stub — real execution is handled by {@code MigrationWorkflow.applyToFile}.
-     */
-    @Override
-    public MigrationResult apply(MigrationContext ctx) {
-        return MigrationResult.noChange();
     }
 
     // ── AiMigrationMetadata ───────────────────────────────────────────────────

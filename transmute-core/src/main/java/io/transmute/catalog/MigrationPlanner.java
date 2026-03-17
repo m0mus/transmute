@@ -18,13 +18,10 @@ import java.util.regex.Pattern;
  * <p>Steps:
  * <ol>
  *   <li>Evaluate triggers for each migration against the inventory</li>
- *   <li>Resolve {@code targetFiles} for FILE-scope AI migrations</li>
+ *   <li>Resolve {@code targetFiles} for FILE-scope migrations</li>
  *   <li>Topological sort by ordering/dependencies</li>
  *   <li>Return the plan</li>
  * </ol>
- *
- * <p>Java migrations implement {@link Migration} directly; scope and triggers are
- * expressed via interface methods. AI migrations use {@link AiMigrationMetadata}.
  */
 public class MigrationPlanner {
 
@@ -64,9 +61,7 @@ public class MigrationPlanner {
                 continue;
             }
 
-            var aiInvolved = migration instanceof AiMigration;
-            var confidence = aiInvolved ? MigrationConfidence.LOW : MigrationConfidence.HIGH;
-            entries.add(new MigrationPlan.MigrationExecutionEntry(migration, targetFiles, confidence, aiInvolved));
+            entries.add(new MigrationPlan.MigrationExecutionEntry(migration, targetFiles, MigrationConfidence.LOW));
         }
 
         return new MigrationPlan(entries);
@@ -75,19 +70,17 @@ public class MigrationPlanner {
     // ── Trigger evaluation ────────────────────────────────────────────────────
 
     private boolean isTriggered(Migration migration, ProjectInventory inventory, List<String> compileErrors) {
-        if (migration instanceof AiMigrationMetadata sm) {
-            var triggers = sm.skillTriggers();
-            if (triggers.isEmpty()) {
+        var sm = (AiMigrationMetadata) migration;
+        var triggers = sm.skillTriggers();
+        if (triggers.isEmpty()) {
+            return true;
+        }
+        for (var trigger : triggers) {
+            if (markdownTriggerFires(trigger, inventory, compileErrors)) {
                 return true;
             }
-            for (var trigger : triggers) {
-                if (markdownTriggerFires(trigger, inventory, compileErrors)) {
-                    return true;
-                }
-            }
-            return false;
         }
-        return migration.isTriggered(inventory);
+        return false;
     }
 
     private boolean markdownTriggerFires(
@@ -95,13 +88,13 @@ public class MigrationPlanner {
             ProjectInventory inventory,
             List<String> compileErrors) {
 
-        // signals[]: AND — all must be present
+        // signals[]: all must be present
         for (var signal : trigger.signals()) {
             if (!inventory.getSignals().contains(signal)) {
                 return false;
             }
         }
-        // files[]: AND — at least one must exist in project root
+        // files[]: at least one must exist in project root
         if (!trigger.files().isEmpty()) {
             var root = inventory.getRootDir() != null ? Path.of(inventory.getRootDir()) : Path.of(".");
             boolean anyPresent = trigger.files().stream().anyMatch(f -> root.resolve(f).toFile().exists());
@@ -109,7 +102,7 @@ public class MigrationPlanner {
                 return false;
             }
         }
-        // compileErrors[]: AND — all patterns must match at least one error
+        // compileErrors[]: all patterns must match at least one error
         for (var regex : trigger.compileErrors()) {
             var pattern = Pattern.compile(regex);
             if (compileErrors.stream().noneMatch(e -> pattern.matcher(e).find())) {
@@ -144,38 +137,31 @@ public class MigrationPlanner {
 
     // ── Scope derivation ──────────────────────────────────────────────────────
 
-    /**
-     * For AI migrations: FILE if any trigger uses Java file conditions; PROJECT otherwise.
-     * For Java migrations: PROJECT always (they handle their own file iteration).
-     */
+    /** FILE if any trigger uses Java file conditions; PROJECT otherwise. */
     private MigrationScope getScope(Migration migration) {
-        if (migration instanceof AiMigrationMetadata sm) {
-            for (var trigger : sm.skillTriggers()) {
-                if (!trigger.imports().isEmpty()
-                        || !trigger.annotations().isEmpty()
-                        || !trigger.superTypes().isEmpty()) {
-                    return MigrationScope.FILE;
-                }
+        var sm = (AiMigrationMetadata) migration;
+        for (var trigger : sm.skillTriggers()) {
+            if (!trigger.imports().isEmpty()
+                    || !trigger.annotations().isEmpty()
+                    || !trigger.superTypes().isEmpty()) {
+                return MigrationScope.FILE;
             }
-            return MigrationScope.PROJECT;
         }
         return MigrationScope.PROJECT;
     }
 
-    // ── Target file resolution (FILE-scope AI migrations only) ────────────────
+    // ── Target file resolution ────────────────────────────────────────────────
 
     private List<String> resolveTargetFiles(Migration migration, ProjectInventory inventory) {
-        if (migration instanceof AiMigrationMetadata sm) {
-            var triggers = sm.skillTriggers();
-            if (triggers.isEmpty()) {
-                return inventory.getJavaFiles().stream().map(JavaFileInfo::sourceFile).toList();
-            }
-            return inventory.getJavaFiles().stream()
-                    .filter(file -> triggers.stream().anyMatch(t -> fileMatchesTrigger(file, t)))
-                    .map(JavaFileInfo::sourceFile)
-                    .toList();
+        var sm = (AiMigrationMetadata) migration;
+        var triggers = sm.skillTriggers();
+        if (triggers.isEmpty()) {
+            return inventory.getJavaFiles().stream().map(JavaFileInfo::sourceFile).toList();
         }
-        return List.of();
+        return inventory.getJavaFiles().stream()
+                .filter(file -> triggers.stream().anyMatch(t -> fileMatchesTrigger(file, t)))
+                .map(JavaFileInfo::sourceFile)
+                .toList();
     }
 
     // ── Topological sort ──────────────────────────────────────────────────────
@@ -222,10 +208,7 @@ public class MigrationPlanner {
     }
 
     private List<Migration> resolveDeps(Migration migration, Map<String, Migration> byName) {
-        var afterNames = migration instanceof AiMigrationMetadata sm
-                ? sm.skillAfterNames()
-                : migration.after();
-
+        var afterNames = ((AiMigrationMetadata) migration).skillAfterNames();
         var deps = new ArrayList<Migration>();
         for (var name : afterNames) {
             var dep = byName.get(name);
@@ -241,7 +224,6 @@ public class MigrationPlanner {
     }
 
     private int getOrder(Migration migration) {
-        if (migration instanceof AiMigrationMetadata sm) return sm.skillOrder();
-        return migration.order();
+        return ((AiMigrationMetadata) migration).skillOrder();
     }
 }

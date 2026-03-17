@@ -20,13 +20,11 @@ public record TransmuteConfig(
         boolean autoApprove,
         boolean verbose,
         boolean dryRun,
-        List<String> skillsPackages,
         List<String> activeProfiles,
         boolean allowOrderConflicts
 ) {
 
     public TransmuteConfig {
-        skillsPackages = skillsPackages == null ? List.of() : List.copyOf(skillsPackages);
         activeProfiles = activeProfiles == null ? List.of() : List.copyOf(activeProfiles);
     }
 
@@ -43,7 +41,6 @@ public record TransmuteConfig(
                 envBool("TRANSMUTE_AUTO_APPROVE", false),
                 envBool("TRANSMUTE_VERBOSE", false),
                 envBool("TRANSMUTE_DRY_RUN", false),
-                List.of(),
                 List.of(),
                 false
         );
@@ -79,7 +76,6 @@ public record TransmuteConfig(
      *   --auto-approve
      *   --verbose
      *   --dry-run
-     *   --skills-package &lt;pkg&gt;   (repeatable)
      *   --profile &lt;name&gt;         (repeatable Maven profile)
      *   --allow-order-conflicts
      * </pre>
@@ -97,7 +93,6 @@ public record TransmuteConfig(
         boolean autoApprove = envBool("TRANSMUTE_AUTO_APPROVE", false);
         boolean verbose = envBool("TRANSMUTE_VERBOSE", false);
         boolean dryRun = envBool("TRANSMUTE_DRY_RUN", false);
-        var skillsPackages = new java.util.ArrayList<String>();
         var activeProfiles = new java.util.ArrayList<String>();
         boolean allowOrderConflicts = false;
 
@@ -114,7 +109,6 @@ public record TransmuteConfig(
                 }
                 case "--force-http1"         -> forceHttp1 = true;
                 case "--oci-profile"         -> { if (i + 1 < args.length) ociProfile = args[++i]; }
-                case "--skills-package"      -> { if (i + 1 < args.length) skillsPackages.add(args[++i]); }
                 case "--profile"             -> { if (i + 1 < args.length) activeProfiles.add(args[++i]); }
                 case "--auto-approve"        -> autoApprove = true;
                 case "--verbose"             -> verbose = true;
@@ -129,7 +123,7 @@ public record TransmuteConfig(
 
         return new TransmuteConfig(projectDir, outputDir, modelProvider, modelId, apiKey, baseUrl,
                 modelTimeoutSeconds, forceHttp1,
-                ociProfile, autoApprove, verbose, dryRun, skillsPackages, activeProfiles, allowOrderConflicts);
+                ociProfile, autoApprove, verbose, dryRun, activeProfiles, allowOrderConflicts);
     }
 
     private static String env(String name, String defaultValue) {

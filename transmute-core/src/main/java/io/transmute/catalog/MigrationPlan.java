@@ -19,8 +19,7 @@ public record MigrationPlan(List<MigrationExecutionEntry> entries) {
     public record MigrationExecutionEntry(
             Migration migration,
             List<String> targetFiles,
-            MigrationConfidence confidence,
-            boolean aiInvolved
+            MigrationConfidence confidence
     ) {
         public MigrationExecutionEntry {
             targetFiles = List.copyOf(targetFiles);

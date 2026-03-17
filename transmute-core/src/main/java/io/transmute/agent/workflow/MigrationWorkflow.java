@@ -11,7 +11,14 @@ import io.transmute.agent.agent.FixCompileErrorsAgent;
 import io.transmute.agent.agent.FixTestFailuresAgent;
 import io.transmute.catalog.*;
 import io.transmute.inventory.ProjectInventory;
-import io.transmute.migration.*;
+import io.transmute.migration.AiMigration;
+import io.transmute.migration.AiMigrationMetadata;
+import io.transmute.migration.FileChange;
+import io.transmute.migration.MarkdownPostchecks;
+import io.transmute.migration.Migration;
+import io.transmute.migration.MigrationResult;
+import io.transmute.migration.MigrationScope;
+import io.transmute.migration.Workspace;
 import io.transmute.migration.postcheck.PostcheckRunner;
 import io.transmute.tool.CompileProjectTool;
 import io.transmute.tool.CopyProjectTool;
@@ -108,8 +115,7 @@ public class MigrationWorkflow {
 
     private void discoverMigrations() {
         Con.step(3, TOTAL_STEPS, "Discovering migrations");
-        var discovery = new MigrationDiscovery().discover(config.skillsPackages());
-        migrations = discovery.migrations();
+        migrations = new MigrationDiscovery().discover().migrations();
         Con.info("Found " + Con.bold(migrations.size() + " migrations"));
         Con.rule();
     }
@@ -165,47 +171,23 @@ public class MigrationWorkflow {
         var model = ModelFactory.create();
         var postcheckRunner = new PostcheckRunner();
 
-        var javaEntries = new ArrayList<MigrationPlan.MigrationExecutionEntry>();
-        var aiEntries   = new ArrayList<MigrationPlan.MigrationExecutionEntry>();
+        var projectScoped = new ArrayList<AiMigration>();
+        var byFile = new LinkedHashMap<String, List<AiMigration>>();
         for (var entry : plan.entries()) {
-            (entry.migration() instanceof AiMigration ? aiEntries : javaEntries).add(entry);
-        }
-
-        // Java migrations — deterministic, called once (handle own file iteration via ctx.inventory())
-        for (var entry : javaEntries) {
-            var migration = entry.migration();
-            System.out.println("  " + Con.BOLD + migration.name() + Con.RESET);
-            try {
-                var ctx = new MigrationContext(inventory, projectState, List.of(), model, workspace, migrationLog);
-                var result = migration.apply(ctx);
-                if (!result.success()) {
-                    Con.error(migration.name() + " reported failure: " + result.message());
-                }
-            } catch (Exception e) {
-                Con.error(migration.name() + " failed: " + e.getMessage());
-            }
-        }
-
-        // AI migrations (recipes/features) — project-scoped run once, file-scoped group by file
-        if (!aiEntries.isEmpty()) {
-            var projectScoped = new ArrayList<AiMigration>();
-            var byFile = new LinkedHashMap<String, List<AiMigration>>();
-            for (var entry : aiEntries) {
-                var aiMig = (AiMigration) entry.migration();
-                if (aiMig.skillScope() == MigrationScope.PROJECT) {
-                    projectScoped.add(aiMig);
-                } else {
-                    for (var file : entry.targetFiles()) {
-                        byFile.computeIfAbsent(file, k -> new ArrayList<>()).add(aiMig);
-                    }
+            var aiMig = (AiMigration) entry.migration();
+            if (aiMig.skillScope() == MigrationScope.PROJECT) {
+                projectScoped.add(aiMig);
+            } else {
+                for (var file : entry.targetFiles()) {
+                    byFile.computeIfAbsent(file, k -> new ArrayList<>()).add(aiMig);
                 }
             }
-            for (var aiMig : projectScoped) {
-                applyToProject(aiMig, workspace, model);
-            }
-            for (var e : byFile.entrySet()) {
-                applyToFile(e.getKey(), e.getValue(), workspace, model, postcheckRunner);
-            }
+        }
+        for (var aiMig : projectScoped) {
+            applyToProject(aiMig, workspace, model);
+        }
+        for (var e : byFile.entrySet()) {
+            applyToFile(e.getKey(), e.getValue(), workspace, model, postcheckRunner);
         }
 
         Con.ok("Migration execution complete");
