@@ -9,13 +9,13 @@ import java.util.List;
  */
 public record MarkdownPostchecks(
         List<String> forbidImports,
-        List<String> forbidPatterns,
-        List<String> requireTodos) {
+        List<String> requireImports,
+        List<String> forbidPatterns) {
 
     public MarkdownPostchecks {
         forbidImports = forbidImports != null ? List.copyOf(forbidImports) : List.of();
+        requireImports = requireImports != null ? List.copyOf(requireImports) : List.of();
         forbidPatterns = forbidPatterns != null ? List.copyOf(forbidPatterns) : List.of();
-        requireTodos = requireTodos != null ? List.copyOf(requireTodos) : List.of();
     }
 
     public static MarkdownPostchecks empty() {

@@ -5,7 +5,6 @@ triggers:
   - imports: [com.google.inject]
   - imports: [org.glassfish.hk2]
   - imports: [org.jvnet.hk2]
-after: [Build File Migration]
 postchecks:
   forbidImports:
     - com.google.inject

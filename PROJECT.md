@@ -53,14 +53,15 @@ TransmuteCli (entry point)
         │                              annotations, supertypes)
         ├── [3]  MigrationDiscovery    load *.recipe.md / *.feature.md from classpath
         ├── [4]  MigrationPlanner      evaluate triggers; resolve target files;
-        │                              topological sort by order / after;
+        │                              deterministic sort by order (then name);
         │                              derive scope (FILE vs PROJECT)
         ├── [5]  ApprovePlan           human gate (skipped if --auto-approve)
         │
         ├── [6]  ExecuteMigrations
         │         ├── FILE-scoped recipes  → one agent call per file
         │         │     (all recipes targeting the same file merged into one prompt)
-        │         └── PROJECT-scoped features → one agent call for the whole output dir
+        │         └── PROJECT-scoped migrations → one agent call for the whole output dir
+        │                                      (can modify multiple files)
         │
         ├── [7]  ReviewGate            human gate (skipped if --auto-approve)
         │
@@ -79,18 +80,17 @@ All migrations are markdown files loaded from the classpath. There are two kinds
 annotations, supertypes). One AI agent call per matching file. All recipes targeting
 the same file are merged into one combined prompt so all transformations apply atomically.
 
-**Feature** (`type: feature`) — PROJECT scope when using `files:` triggers (file
-existence); FILE scope if any trigger uses `imports`/`annotations`/`superTypes`. Scope
-is derived automatically — never declared explicitly.
+**Feature** (`type: feature`) — FILE scope when triggering on file-level signals
+(`imports`, `annotations`, `superTypes`, or `files`). PROJECT scope only when no
+file-targeting trigger is present (for run-once global operations).
 
 ### Front-matter reference
 
 ```yaml
 ---
-name: My Migration        # required, unique; used for after: references and logs
+name: My Migration        # required, unique; used for display/logs
 type: recipe              # recipe | feature
 order: 20                 # integer, default 50; lower = runs first
-after: [Other Migration]  # must run after these named migrations
 triggers:
   - imports: [com.example.OldClass]        # file imports any of these
     annotations: [com.example.OldAnnot]    # file uses any of these annotations
@@ -112,7 +112,8 @@ Fields within one trigger object are AND'd — all conditions must hold.
 | Trigger types present | Derived scope |
 |-----------------------|---------------|
 | Any `imports` / `annotations` / `superTypes` | FILE (one call per matching file) |
-| Only `files` (or no triggers) | PROJECT (one call for the whole output dir) |
+| Any `files` trigger | FILE (one call per matched file path) |
+| No file-targeting trigger (or no triggers) | PROJECT (one call for the whole output dir) |
 
 ### Combined prompt for FILE-scoped recipes
 
@@ -172,7 +173,7 @@ io.transmute.agent/
     MigrationWorkflow.java    10-step sequential pipeline; ANSI-colored console output
 
 io.transmute.migration/
-  Migration.java              Planning interface: name(), order(), after()
+  Migration.java              Planning interface: name(), order()
   AiMigration.java            Loaded markdown migration (implements Migration + AiMigrationMetadata)
   AiMigrationMetadata.java    Full migration metadata: triggers, postchecks, scope, body, etc.
   MigrationResult.java        Result: success flag, message, list of FileChanges
@@ -180,7 +181,7 @@ io.transmute.migration/
   Workspace.java              Path helpers: sourceDir, outputDir, dryRun flag
   MigrationScope.java         Enum: FILE | PROJECT
   MarkdownTrigger.java        Record: imports, annotations, superTypes, signals, compileErrors, files
-  MarkdownPostchecks.java     Record: forbidImports, requireImports, forbidPatterns, requireTodos
+  MarkdownPostchecks.java     Record: forbidImports, requireImports, forbidPatterns
   postcheck/
     PostcheckRunner.java      Evaluates postchecks after FILE-scoped migrations
     PostcheckRule.java        One check (lambda over FileChange)
@@ -193,10 +194,7 @@ io.transmute.catalog/
   MarkdownMigrationLoader.java Scans classpath for markdown migrations; parses front-matter
   RecipeFrontMatter.java      Jackson-mapped front-matter record
   MigrationConfidence.java    Enum: HIGH | MEDIUM | LOW
-  FeatureConflictException.java Thrown on unresolvable ordering cycle
-  MigrationLog.java           Append-only log of migration outcomes per file
-  MigrationLogEntry.java      One log entry (migration name, file, status, message)
-  ProjectState.java           Mutable inter-migration shared state bag
+  FeatureConflictException.java Thrown on overlapping feature transform ownership
 
 io.transmute.inventory/
   ProjectInventory.java       Collected project metadata (Java files, root dir, warnings, errors)
@@ -242,17 +240,12 @@ Set `TRANSMUTE_LOG_PROMPTS=true` (default). All prompts and responses are writte
 
 ---
 
-## 9. Ordering and Conflict Resolution
+## 9. Ordering
 
-Migrations are topologically sorted by two mechanisms:
+Migrations are sorted by:
 
 1. **`order:`** — numeric priority. Lower values run first. Default: 50.
-2. **`after:`** — explicit name-based "must run after" constraints. Names match the
-   `name:` field in front-matter exactly.
-
-If a cycle is detected or an `after:` references a name not in the active plan,
-`MigrationPlanner` logs a warning. Set `--allow-order-conflicts` to suppress the
-warning; omit it to treat it as an error.
+2. **`name:`** — lexical tie-breaker for deterministic ordering when orders are equal.
 
 ---
 
@@ -266,7 +259,6 @@ declared in the front-matter against the file's after-content:
 | `forbidImports` | Warns if the output file still imports any listed prefix |
 | `requireImports` | Warns if the output file does not import any listed prefix |
 | `forbidPatterns` | Warns if the output file matches any listed regex |
-| `requireTodos` | Warns if the output does not contain any listed TODO string |
 
 Failures are logged to the console as warnings (yellow `⚠`). They do not abort the
 pipeline — they flag files that may need manual review.

@@ -10,7 +10,7 @@ import dev.langchain4j.service.V;
  */
 public interface FixCompileErrorsAgent {
 
-    @SystemMessage(fromResource = "prompts/fix-compile-errors.md")
+    @SystemMessage(fromResource = "fix-compile-errors.md")
     @UserMessage("""
         Fix compilation errors in the migrated project at {{outputDir}}.
         Errors: {{compileErrors}}

@@ -20,8 +20,7 @@ public record TransmuteConfig(
         boolean autoApprove,
         boolean verbose,
         boolean dryRun,
-        List<String> activeProfiles,
-        boolean allowOrderConflicts
+        List<String> activeProfiles
 ) {
 
     public TransmuteConfig {
@@ -41,8 +40,7 @@ public record TransmuteConfig(
                 envBool("TRANSMUTE_AUTO_APPROVE", false),
                 envBool("TRANSMUTE_VERBOSE", false),
                 envBool("TRANSMUTE_DRY_RUN", false),
-                List.of(),
-                false
+                List.of()
         );
     }
 
@@ -77,7 +75,6 @@ public record TransmuteConfig(
      *   --verbose
      *   --dry-run
      *   --profile &lt;name&gt;         (repeatable Maven profile)
-     *   --allow-order-conflicts
      * </pre>
      */
     public static TransmuteConfig fromArgs(String[] args) {
@@ -94,7 +91,6 @@ public record TransmuteConfig(
         boolean verbose = envBool("TRANSMUTE_VERBOSE", false);
         boolean dryRun = envBool("TRANSMUTE_DRY_RUN", false);
         var activeProfiles = new java.util.ArrayList<String>();
-        boolean allowOrderConflicts = false;
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -113,7 +109,6 @@ public record TransmuteConfig(
                 case "--auto-approve"        -> autoApprove = true;
                 case "--verbose"             -> verbose = true;
                 case "--dry-run"             -> dryRun = true;
-                case "--allow-order-conflicts" -> allowOrderConflicts = true;
             }
         }
 
@@ -123,7 +118,7 @@ public record TransmuteConfig(
 
         return new TransmuteConfig(projectDir, outputDir, modelProvider, modelId, apiKey, baseUrl,
                 modelTimeoutSeconds, forceHttp1,
-                ociProfile, autoApprove, verbose, dryRun, activeProfiles, allowOrderConflicts);
+                ociProfile, autoApprove, verbose, dryRun, activeProfiles);
     }
 
     private static String env(String name, String defaultValue) {

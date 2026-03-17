@@ -9,7 +9,6 @@ triggers:
                   com.codahale.metrics.annotation.ExceptionMetered]
   - imports: [io.dropwizard.metrics]
 order: 15
-after: [Build File Migration]
 postchecks:
   forbidImports:
     - com.codahale.metrics

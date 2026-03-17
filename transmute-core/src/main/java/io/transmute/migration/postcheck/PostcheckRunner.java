@@ -17,7 +17,7 @@ public class PostcheckRunner {
         if (postchecks == null) {
             return List.of();
         }
-        var rules = buildRules(postchecks, result);
+        var rules = buildRules(postchecks);
         return applyRules(rules, result);
     }
 
@@ -34,12 +34,20 @@ public class PostcheckRunner {
         return failures;
     }
 
-    private List<PostcheckRule> buildRules(MarkdownPostchecks postchecks, MigrationResult result) {
+    private List<PostcheckRule> buildRules(MarkdownPostchecks postchecks) {
         var rules = new ArrayList<PostcheckRule>();
         for (var forbidImport : postchecks.forbidImports()) {
             rules.add(change -> {
                 if (change.after() != null && change.after().contains("import " + forbidImport)) {
                     return PostcheckResult.fail("Forbidden import still present: " + forbidImport);
+                }
+                return PostcheckResult.pass();
+            });
+        }
+        for (var requireImport : postchecks.requireImports()) {
+            rules.add(change -> {
+                if (change.after() == null || !change.after().contains("import " + requireImport)) {
+                    return PostcheckResult.fail("Required import missing: " + requireImport);
                 }
                 return PostcheckResult.pass();
             });
@@ -51,13 +59,6 @@ public class PostcheckRunner {
                     return PostcheckResult.fail("Forbidden pattern found: " + forbidPattern);
                 }
                 return PostcheckResult.pass();
-            });
-        }
-        for (var requireTodo : postchecks.requireTodos()) {
-            rules.add(change -> {
-                boolean found = result.todos().stream().anyMatch(t -> t.contains(requireTodo));
-                return found ? PostcheckResult.pass()
-                        : PostcheckResult.fail("Required TODO not present: " + requireTodo);
             });
         }
         return rules;

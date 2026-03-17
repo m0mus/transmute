@@ -11,18 +11,18 @@ This module contains **zero Java code** and **zero dependencies** — only
 
 ## Migrations overview
 
-Migrations run in this order. Scope and triggers are declared in each file's
-front-matter and derived automatically by the planner.
+Migrations run in this order. Triggers are declared in each file's
+front-matter; scope is derived automatically by the planner.
 
 | Order | File | Type | Scope | Trigger |
 |-------|------|------|-------|---------|
-| 1 | `features/build-migration.feature.md` | feature | PROJECT | `pom.xml`, `build.gradle`, etc. present |
+| 1 | `features/build-migration.feature.md` | feature | FILE | `pom.xml`, `build.gradle`, etc. present |
 | 5 | `recipes/jaxrs-rest-resource.recipe.md` | recipe | FILE | `@Path` annotation or `javax.ws.rs.` imports |
 | 20 | `recipes/health-check.recipe.md` | recipe | FILE | `com.codahale.metrics.health.HealthCheck` / `io.dropwizard.health.HealthCheck` import or supertype |
 
 ---
 
-## Build File Migration — order 1, PROJECT scope
+## Build File Migration — order 1, FILE scope
 
 `features/build-migration.feature.md`
 

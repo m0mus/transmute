@@ -5,7 +5,6 @@ triggers:
   - superTypes: [io.dropwizard.core.Configuration]
   - superTypes: [io.dropwizard.Configuration]
 order: 3
-after: [Build File Migration]
 postchecks:
   forbidImports:
     - io.dropwizard.core.Configuration

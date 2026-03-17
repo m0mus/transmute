@@ -5,7 +5,6 @@ triggers:
   - imports: [io.dropwizard.lifecycle.Managed]
     superTypes: [io.dropwizard.lifecycle.Managed]
 order: 10
-after: [Build File Migration]
 postchecks:
   forbidImports:
     - io.dropwizard.lifecycle.Managed

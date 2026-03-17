@@ -15,7 +15,6 @@ public class AiMigration implements Migration, AiMigrationMetadata {
 
     private final String name;
     private final int order;
-    private final List<String> afterNames;
     private final List<MarkdownTrigger> triggers;
     private final MarkdownPostchecks postchecks;
     private final RecipeKind type;
@@ -27,21 +26,18 @@ public class AiMigration implements Migration, AiMigrationMetadata {
     public AiMigration(
             String name,
             int order,
-            List<String> afterNames,
             List<MarkdownTrigger> triggers,
             MarkdownPostchecks postchecks,
             RecipeKind type,
-            MigrationScope scope,
             List<String> transformAnnotations,
             List<String> transformTypes,
             String body) {
         this.name = name;
         this.order = order;
-        this.afterNames = afterNames != null ? List.copyOf(afterNames) : List.of();
         this.triggers = triggers != null ? List.copyOf(triggers) : List.of();
         this.postchecks = postchecks != null ? postchecks : MarkdownPostchecks.empty();
         this.type = type != null ? type : RecipeKind.RECIPE;
-        this.scope = scope != null ? scope : MigrationScope.FILE;
+        this.scope = deriveScope(this.triggers);
         this.transformAnnotations = transformAnnotations != null ? List.copyOf(transformAnnotations) : List.of();
         this.transformTypes = transformTypes != null ? List.copyOf(transformTypes) : List.of();
         this.body = body != null ? body : "";
@@ -59,9 +55,6 @@ public class AiMigration implements Migration, AiMigrationMetadata {
 
     @Override
     public int skillOrder() { return order; }
-
-    @Override
-    public List<String> skillAfterNames() { return afterNames; }
 
     @Override
     public List<MarkdownTrigger> skillTriggers() { return triggers; }
@@ -83,4 +76,16 @@ public class AiMigration implements Migration, AiMigrationMetadata {
 
     @Override
     public String systemPromptSection() { return body; }
+
+    private static MigrationScope deriveScope(List<MarkdownTrigger> triggers) {
+        for (var trigger : triggers) {
+            if (!trigger.imports().isEmpty()
+                    || !trigger.annotations().isEmpty()
+                    || !trigger.superTypes().isEmpty()
+                    || !trigger.files().isEmpty()) {
+                return MigrationScope.FILE;
+            }
+        }
+        return MigrationScope.PROJECT;
+    }
 }

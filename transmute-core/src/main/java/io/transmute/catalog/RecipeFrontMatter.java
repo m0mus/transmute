@@ -14,9 +14,7 @@ import java.util.List;
 public record RecipeFrontMatter(
         String name,
         String type,
-        String scope,
         int order,
-        List<String> after,
         List<TriggerFrontMatter> triggers,
         TransformsFrontMatter transforms,
         PostchecksFrontMatter postchecks) {
@@ -60,13 +58,13 @@ public record RecipeFrontMatter(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record PostchecksFrontMatter(
             List<String> forbidImports,
-            List<String> forbidPatterns,
-            List<String> requireTodos) {
+            List<String> requireImports,
+            List<String> forbidPatterns) {
 
         public PostchecksFrontMatter {
             forbidImports = forbidImports != null ? forbidImports : List.of();
+            requireImports = requireImports != null ? requireImports : List.of();
             forbidPatterns = forbidPatterns != null ? forbidPatterns : List.of();
-            requireTodos = requireTodos != null ? requireTodos : List.of();
         }
     }
 }

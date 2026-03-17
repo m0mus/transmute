@@ -2,7 +2,6 @@ package io.transmute.catalog;
 
 import io.transmute.inventory.JavaFileInfo;
 import io.transmute.inventory.ProjectInventory;
-import io.transmute.migration.AiMigration;
 import io.transmute.migration.AiMigrationMetadata;
 import io.transmute.migration.MarkdownTrigger;
 import io.transmute.migration.Migration;
@@ -19,19 +18,11 @@ import java.util.regex.Pattern;
  * <ol>
  *   <li>Evaluate triggers for each migration against the inventory</li>
  *   <li>Resolve {@code targetFiles} for FILE-scope migrations</li>
- *   <li>Topological sort by ordering/dependencies</li>
+ *   <li>Sort by {@code order} then migration name</li>
  *   <li>Return the plan</li>
  * </ol>
  */
 public class MigrationPlanner {
-
-    private final boolean allowOrderConflicts;
-
-    public MigrationPlanner() { this(false); }
-
-    public MigrationPlanner(boolean allowOrderConflicts) {
-        this.allowOrderConflicts = allowOrderConflicts;
-    }
 
     public MigrationPlan plan(
             List<Migration> migrations,
@@ -46,15 +37,15 @@ public class MigrationPlanner {
             }
         }
 
-        // 2. Topological sort
-        var sorted = topoSort(triggered);
+        // 2. Deterministic order sort
+        var sorted = sortByOrder(triggered);
 
         // 3. Build plan entries
         var entries = new ArrayList<MigrationPlan.MigrationExecutionEntry>();
         for (var migration : sorted) {
-            var scope = getScope(migration);
+            var scope = ((AiMigrationMetadata) migration).skillScope();
             var targetFiles = scope == MigrationScope.FILE
-                    ? resolveTargetFiles(migration, inventory)
+                    ? resolveTargetFiles(migration, inventory, compileErrors)
                     : List.<String>of();
 
             if (scope == MigrationScope.FILE && targetFiles.isEmpty()) {
@@ -96,7 +87,9 @@ public class MigrationPlanner {
         }
         // files[]: at least one must exist in project root
         if (!trigger.files().isEmpty()) {
-            var root = inventory.getRootDir() != null ? Path.of(inventory.getRootDir()) : Path.of(".");
+            var root = inventory.getRootDir() != null
+                    ? Path.of(inventory.getRootDir()).toAbsolutePath().normalize()
+                    : Path.of(".").toAbsolutePath().normalize();
             boolean anyPresent = trigger.files().stream().anyMatch(f -> root.resolve(f).toFile().exists());
             if (!anyPresent) {
                 return false;
@@ -135,95 +128,82 @@ public class MigrationPlanner {
         return true;
     }
 
-    // ── Scope derivation ──────────────────────────────────────────────────────
-
-    /** FILE if any trigger uses Java file conditions; PROJECT otherwise. */
-    private MigrationScope getScope(Migration migration) {
-        var sm = (AiMigrationMetadata) migration;
-        for (var trigger : sm.skillTriggers()) {
-            if (!trigger.imports().isEmpty()
-                    || !trigger.annotations().isEmpty()
-                    || !trigger.superTypes().isEmpty()) {
-                return MigrationScope.FILE;
-            }
-        }
-        return MigrationScope.PROJECT;
-    }
-
     // ── Target file resolution ────────────────────────────────────────────────
 
-    private List<String> resolveTargetFiles(Migration migration, ProjectInventory inventory) {
+    private List<String> resolveTargetFiles(Migration migration, ProjectInventory inventory, List<String> compileErrors) {
         var sm = (AiMigrationMetadata) migration;
         var triggers = sm.skillTriggers();
         if (triggers.isEmpty()) {
             return inventory.getJavaFiles().stream().map(JavaFileInfo::sourceFile).toList();
         }
-        return inventory.getJavaFiles().stream()
-                .filter(file -> triggers.stream().anyMatch(t -> fileMatchesTrigger(file, t)))
-                .map(JavaFileInfo::sourceFile)
-                .toList();
-    }
+        var targets = new LinkedHashSet<String>();
+        var root = inventory.getRootDir() != null
+                ? Path.of(inventory.getRootDir()).toAbsolutePath().normalize()
+                : Path.of(".").toAbsolutePath().normalize();
 
-    // ── Topological sort ──────────────────────────────────────────────────────
-
-    private List<Migration> topoSort(List<Migration> migrations) {
-        var byName = new LinkedHashMap<String, Migration>();
-        for (var m : migrations) {
-            byName.put(m.name(), m);
-        }
-
-        var inDegree = new IdentityHashMap<Migration, Integer>();
-        var edges = new IdentityHashMap<Migration, List<Migration>>();
-        for (var m : migrations) {
-            inDegree.putIfAbsent(m, 0);
-        }
-
-        for (var m : migrations) {
-            for (var dep : resolveDeps(m, byName)) {
-                edges.computeIfAbsent(dep, k -> new ArrayList<>()).add(m);
-                inDegree.merge(m, 1, Integer::sum);
+        for (var trigger : triggers) {
+            if (!triggerPreconditionsSatisfied(trigger, inventory, compileErrors)) {
+                continue;
             }
-        }
-
-        var queue = new PriorityQueue<Migration>(Comparator.comparingInt(this::getOrder));
-        for (var entry : inDegree.entrySet()) {
-            if (entry.getValue() == 0) queue.add(entry.getKey());
-        }
-
-        var result = new ArrayList<Migration>();
-        while (!queue.isEmpty()) {
-            var node = queue.poll();
-            result.add(node);
-            for (var next : edges.getOrDefault(node, List.of())) {
-                if (inDegree.merge(next, -1, Integer::sum) == 0) {
-                    queue.add(next);
+            if (hasJavaFileConditions(trigger)) {
+                inventory.getJavaFiles().stream()
+                        .filter(file -> fileMatchesTrigger(file, trigger))
+                        .map(JavaFileInfo::sourceFile)
+                        .forEach(targets::add);
+            }
+            for (var path : trigger.files()) {
+                var candidate = root.resolve(path).normalize();
+                if (candidate.toFile().exists() && candidate.startsWith(root)) {
+                    targets.add(root.relativize(candidate).toString());
                 }
             }
         }
 
-        if (result.size() != migrations.size()) {
-            throw new IllegalStateException("Cycle detected in migration dependency graph.");
-        }
-        return result;
+        return List.copyOf(targets);
     }
 
-    private List<Migration> resolveDeps(Migration migration, Map<String, Migration> byName) {
-        var afterNames = ((AiMigrationMetadata) migration).skillAfterNames();
-        var deps = new ArrayList<Migration>();
-        for (var name : afterNames) {
-            var dep = byName.get(name);
-            if (dep != null) {
-                deps.add(dep);
-            } else if (!allowOrderConflicts) {
-                System.err.println("[MigrationPlanner] Warning: after='" + name
-                        + "' referenced by '" + migration.name()
-                        + "' is not in the active migration set.");
-            }
-        }
-        return deps;
+    // ── Ordering ──────────────────────────────────────────────────────────────
+
+    private List<Migration> sortByOrder(List<Migration> migrations) {
+        return migrations.stream()
+                .sorted(Comparator.comparingInt(this::getOrder).thenComparing(Migration::name))
+                .toList();
     }
 
     private int getOrder(Migration migration) {
         return ((AiMigrationMetadata) migration).skillOrder();
+    }
+
+    private boolean hasJavaFileConditions(MarkdownTrigger trigger) {
+        return !trigger.imports().isEmpty()
+                || !trigger.annotations().isEmpty()
+                || !trigger.superTypes().isEmpty();
+    }
+
+    private boolean triggerPreconditionsSatisfied(
+            MarkdownTrigger trigger,
+            ProjectInventory inventory,
+            List<String> compileErrors) {
+        for (var signal : trigger.signals()) {
+            if (!inventory.getSignals().contains(signal)) {
+                return false;
+            }
+        }
+        if (!trigger.files().isEmpty()) {
+            var root = inventory.getRootDir() != null
+                    ? Path.of(inventory.getRootDir()).toAbsolutePath().normalize()
+                    : Path.of(".").toAbsolutePath().normalize();
+            boolean anyPresent = trigger.files().stream().anyMatch(f -> root.resolve(f).toFile().exists());
+            if (!anyPresent) {
+                return false;
+            }
+        }
+        for (var regex : trigger.compileErrors()) {
+            var pattern = Pattern.compile(regex);
+            if (compileErrors.stream().noneMatch(e -> pattern.matcher(e).find())) {
+                return false;
+            }
+        }
+        return true;
     }
 }

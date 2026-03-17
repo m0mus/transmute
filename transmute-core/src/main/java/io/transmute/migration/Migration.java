@@ -1,9 +1,5 @@
 package io.transmute.migration;
 
-import io.transmute.inventory.ProjectInventory;
-
-import java.util.List;
-
 /**
  * Planning interface for all migrations.
  *
@@ -12,12 +8,9 @@ import java.util.List;
  */
 public interface Migration {
 
-    /** Human-readable name used in logs, reports, and {@code after} resolution. */
+    /** Human-readable name used in logs and reports. */
     String name();
 
     /** Execution order — lower values run first. Defaults to 50. */
     default int order() { return 50; }
-
-    /** Names of migrations that must complete before this one. */
-    default List<String> after() { return List.of(); }
 }

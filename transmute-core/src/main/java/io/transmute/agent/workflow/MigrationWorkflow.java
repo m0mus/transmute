@@ -9,12 +9,12 @@ import io.transmute.agent.TransmuteConfig;
 import io.transmute.agent.ModelFactory;
 import io.transmute.agent.agent.FixCompileErrorsAgent;
 import io.transmute.agent.agent.FixTestFailuresAgent;
-import io.transmute.catalog.*;
+import io.transmute.catalog.MigrationDiscovery;
+import io.transmute.catalog.MigrationPlan;
+import io.transmute.catalog.MigrationPlanner;
 import io.transmute.inventory.ProjectInventory;
 import io.transmute.migration.AiMigration;
-import io.transmute.migration.AiMigrationMetadata;
 import io.transmute.migration.FileChange;
-import io.transmute.migration.MarkdownPostchecks;
 import io.transmute.migration.Migration;
 import io.transmute.migration.MigrationResult;
 import io.transmute.migration.MigrationScope;
@@ -63,8 +63,8 @@ public class MigrationWorkflow {
     private ProjectInventory inventory;
     private List<Migration> migrations;
     private MigrationPlan plan;
-    private MigrationLog migrationLog;
-    private ProjectState projectState;
+    private long migrationsExecuted;
+    private long changedFiles;
 
     public MigrationWorkflow(TransmuteConfig config) {
         this.config = config;
@@ -73,8 +73,8 @@ public class MigrationWorkflow {
     public void run() throws Exception {
         printBanner();
 
-        migrationLog = new MigrationLog();
-        projectState = new ProjectState();
+        migrationsExecuted = 0;
+        changedFiles = 0;
 
         copyProject();
         scanInventory();
@@ -122,7 +122,7 @@ public class MigrationWorkflow {
 
     private void buildPlan() {
         Con.step(4, TOTAL_STEPS, "Building migration plan");
-        plan = new MigrationPlanner(config.allowOrderConflicts()).plan(migrations, inventory, List.of());
+        plan = new MigrationPlanner().plan(migrations, inventory, List.of());
         Con.info("Migrations in plan: " + Con.bold(String.valueOf(plan.entries().size())));
         for (var entry : plan.entries()) {
             var line = new StringBuilder("  ")
@@ -184,10 +184,18 @@ public class MigrationWorkflow {
             }
         }
         for (var aiMig : projectScoped) {
-            applyToProject(aiMig, workspace, model);
+            if (applyToProject(aiMig, workspace, model)) {
+                migrationsExecuted++;
+            }
         }
         for (var e : byFile.entrySet()) {
-            applyToFile(e.getKey(), e.getValue(), workspace, model, postcheckRunner);
+            var result = applyToFile(e.getKey(), e.getValue(), workspace, model, postcheckRunner);
+            if (result.success()) {
+                migrationsExecuted += e.getValue().size();
+            }
+            if (result.changed()) {
+                changedFiles++;
+            }
         }
 
         Con.ok("Migration execution complete");
@@ -256,10 +264,8 @@ public class MigrationWorkflow {
         var report = new LinkedHashMap<String, Object>();
         report.put("sourceDir", config.projectDir());
         report.put("outputDir", config.outputDir());
-        report.put("migrationsExecuted",
-                migrationLog.allEntries().stream()
-                        .filter(e -> e.status() == LogStatus.CHANGED)
-                        .count());
+        report.put("migrationsExecuted", migrationsExecuted);
+        report.put("filesChanged", changedFiles);
         report.put("dryRun", config.dryRun());
 
         var reportPath = Path.of(config.outputDir(), "migration-report.json");
@@ -293,7 +299,7 @@ public class MigrationWorkflow {
     /**
      * Applies a project-scoped recipe/feature once for the whole output directory.
      */
-    private void applyToProject(
+    private boolean applyToProject(
             AiMigration aiMigration,
             Workspace workspace,
             dev.langchain4j.model.chat.ChatModel model) {
@@ -304,7 +310,7 @@ public class MigrationWorkflow {
 
         if (config.dryRun()) {
             System.out.println("    " + Con.DIM + "[dry-run] skipping agent invocation" + Con.RESET);
-            return;
+            return false;
         }
         try {
             AiServices.builder(SingleFileAgent.class)
@@ -314,15 +320,17 @@ public class MigrationWorkflow {
                     .build()
                     .apply("Apply the migration to the project at: " + workspace.outputDir()
                             + "\nUse paths relative to the output directory.");
+            return true;
         } catch (Exception e) {
             Con.error("Agent failed for project migration " + aiMigration.skillName() + ": " + e.getMessage());
+            return false;
         }
     }
 
     /**
      * Applies one or more recipes/features to a single file in a single agent invocation.
      */
-    private void applyToFile(
+    private ApplyResult applyToFile(
             String sourceFile,
             List<AiMigration> aiMigrations,
             Workspace workspace,
@@ -338,7 +346,7 @@ public class MigrationWorkflow {
             beforeContent = Files.readString(Path.of(outputDir).resolve(relPath));
         } catch (Exception e) {
             Con.error("Cannot read " + relPath + ": " + e.getMessage());
-            return;
+            return ApplyResult.failed();
         }
 
         var migrationNames = aiMigrations.stream().map(AiMigration::skillName).toList();
@@ -350,7 +358,7 @@ public class MigrationWorkflow {
 
         if (config.dryRun()) {
             System.out.println("    " + Con.DIM + "[dry-run] skipping agent invocation" + Con.RESET);
-            return;
+            return ApplyResult.failed();
         }
 
         var combinedPrompt = buildCombinedPrompt(aiMigrations);
@@ -365,7 +373,7 @@ public class MigrationWorkflow {
                             + "Read the file, apply every section above, write it back.");
         } catch (Exception e) {
             Con.error("Agent failed for " + relPath + ": " + e.getMessage());
-            return;
+            return ApplyResult.failed();
         }
 
         String afterContent;
@@ -373,7 +381,7 @@ public class MigrationWorkflow {
             afterContent = Files.readString(Path.of(outputDir).resolve(relPath));
         } catch (Exception e) {
             Con.error("Cannot read result for " + relPath + ": " + e.getMessage());
-            return;
+            return ApplyResult.failed();
         }
 
         var change = new FileChange(sourceFile, beforeContent, afterContent);
@@ -386,6 +394,7 @@ public class MigrationWorkflow {
                 failures.forEach(f -> System.out.println("      " + Con.YELLOW + f + Con.RESET));
             }
         }
+        return new ApplyResult(true, change.isChanged());
     }
 
     /**
@@ -428,6 +437,12 @@ public class MigrationWorkflow {
     private interface SingleFileAgent {
         @UserMessage("{{msg}}")
         String apply(@V("msg") String msg);
+    }
+
+    private record ApplyResult(boolean success, boolean changed) {
+        private static ApplyResult failed() {
+            return new ApplyResult(false, false);
+        }
     }
 
     // ── Banner ────────────────────────────────────────────────────────────────

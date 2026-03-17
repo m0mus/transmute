@@ -7,7 +7,6 @@ import io.transmute.migration.AiMigration;
 import io.transmute.migration.MarkdownPostchecks;
 import io.transmute.migration.MarkdownTrigger;
 import io.transmute.migration.RecipeKind;
-import io.transmute.migration.MigrationScope;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -129,14 +128,11 @@ public class MarkdownMigrationLoader {
         if (fm.postchecks() != null) {
             postchecks = new MarkdownPostchecks(
                     fm.postchecks().forbidImports(),
-                    fm.postchecks().forbidPatterns(),
-                    fm.postchecks().requireTodos());
+                    fm.postchecks().requireImports(),
+                    fm.postchecks().forbidPatterns());
         } else {
             postchecks = MarkdownPostchecks.empty();
         }
-
-        // Scope — defaults to FILE
-        var scope = "project".equalsIgnoreCase(fm.scope()) ? MigrationScope.PROJECT : MigrationScope.FILE;
 
         // Transforms — declares FQN ownership for features
         List<String> transformAnnotations = List.of();
@@ -149,11 +145,9 @@ public class MarkdownMigrationLoader {
         return new AiMigration(
                 fm.name(),
                 fm.order() > 0 ? fm.order() : 50,
-                fm.after() != null ? fm.after() : List.of(),
                 triggers,
                 postchecks,
                 recipeKind,
-                scope,
                 transformAnnotations,
                 transformTypes,
                 body);

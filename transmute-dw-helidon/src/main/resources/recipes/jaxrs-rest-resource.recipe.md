@@ -5,7 +5,6 @@ triggers:
   - annotations: [javax.ws.rs.Path]
   - imports: [javax.ws.rs.]
 order: 5
-after: [Build File Migration]
 postchecks:
   forbidImports:
     - javax.ws.rs.

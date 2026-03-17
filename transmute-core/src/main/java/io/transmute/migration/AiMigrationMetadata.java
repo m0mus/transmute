@@ -13,17 +13,11 @@ import java.util.List;
  */
 public interface AiMigrationMetadata {
 
-    /** Human-readable name (used for display and name-based {@code after} resolution). */
+    /** Human-readable name (used for display and logging). */
     String skillName();
 
     /** Execution order (lower runs first). */
     int skillOrder();
-
-    /**
-     * Names of Java migrations, recipes, or features that must run before this one.
-     * Resolved by name at planning time.
-     */
-    List<String> skillAfterNames();
 
     /** Trigger conditions that determine when this recipe or feature applies. */
     List<MarkdownTrigger> skillTriggers();

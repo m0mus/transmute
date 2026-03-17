@@ -4,7 +4,6 @@ type: recipe
 order: 2
 triggers:
   - files: [pom.xml]
-after: [Build File Migration]
 ---
 
 Migrate the Dropwizard `Application<T>` class to a Helidon 4 SE `Main` class.

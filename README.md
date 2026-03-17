@@ -18,11 +18,12 @@ For the full design, rationale, and API reference see [PROJECT.md](PROJECT.md).
    and inter-module relationships
 3. Discover migrations: load *.recipe.md / *.feature.md files from the classpath
 4. Plan: evaluate trigger conditions against the inventory; resolve target files;
-   sort by order / after dependency constraints; derive execution scope
+   sort by order; derive execution scope
 5. Human approval gate — the plan is shown before anything is executed
 6. Execute migrations in order:
      • Recipes (FILE scope) — one AI agent call per file, all matching recipes merged
-     • Features (PROJECT scope) — one AI agent call for the whole output directory
+     • Project-scoped migrations — one AI agent call for the whole output directory
+       (can modify multiple files)
 7. Human review gate
 8. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
 9. Test-fix loop: AI agent fixes test failures (max 5 iterations)
@@ -35,7 +36,7 @@ the trigger conditions, execution order, and postchecks. The body is the AI syst
 ```markdown
 ---
 name: My Recipe
-type: recipe          # recipe = FILE scope, feature = PROJECT scope
+type: recipe          # kind only; scope is derived from triggers
 order: 20
 triggers:
   - imports: [com.example.OldApi]
@@ -146,7 +147,6 @@ java -cp transmute-core.jar;transmute-dw-helidon.jar ^
 | `--profile` | *(none)* | Maven profile(s) to activate during compile/test (repeatable) |
 | `--auto-approve` | false | Skip human approval/review gates |
 | `--dry-run` | false | Compute changes but do not write files |
-| `--allow-order-conflicts` | false | Warn instead of fail on ordering violations |
 
 ### Environment variables
 
@@ -172,9 +172,8 @@ A migration module is a Maven project with no dependencies. Place `.recipe.md` o
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | yes | Human-readable migration name |
-| `type` | yes | `recipe` (FILE scope) or `feature` (PROJECT scope) |
+| `type` | yes | `recipe` or `feature` (scope is derived from triggers) |
 | `order` | no | Execution order, default 50 |
-| `after` | no | List of migration names this must run after |
 | `triggers` | no | List of trigger conditions (omit → always triggered) |
 | `postchecks` | no | `forbidImports`, `requireImports` post-execution assertions |
 
@@ -188,8 +187,8 @@ triggers:
   - files: [pom.xml, build.gradle]        # project root contains any of these files
 ```
 
-Scope is derived automatically: FILE if any trigger uses `imports`, `annotations`, or
-`superTypes`; PROJECT if triggers use only `files` (or there are no triggers).
+Scope is derived automatically: FILE if any trigger uses `imports`, `annotations`,
+`superTypes`, or `files`; PROJECT only when no file-targeting trigger is present.
 
 Build the JAR and place it on the classpath alongside `transmute-core-*.jar`:
 

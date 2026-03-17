@@ -7,7 +7,6 @@ triggers:
   - imports: [io.dropwizard.health.HealthCheck]
     superTypes: [io.dropwizard.health.HealthCheck]
 order: 20
-after: [Build File Migration]
 postchecks:
   forbidImports:
     - com.codahale.metrics.health.HealthCheck

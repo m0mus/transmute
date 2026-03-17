@@ -10,7 +10,7 @@ import dev.langchain4j.service.V;
  */
 public interface FixTestFailuresAgent {
 
-    @SystemMessage(fromResource = "prompts/fix-test-failures.md")
+    @SystemMessage(fromResource = "fix-test-failures.md")
     @UserMessage("""
         Fix test failures in the migrated project at {{outputDir}}.
         Test output: {{testOutput}}

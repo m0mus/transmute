@@ -26,7 +26,6 @@ import io.transmute.agent.workflow.MigrationWorkflow;
  *   --auto-approve               Skip human approval gates (non-interactive)
  *   --verbose                    Verbose tool progress logging
  *   --dry-run                    Collect changes without writing files
- *   --allow-order-conflicts      Warn instead of fail on unresolved @Skill(after=...) deps
  * </pre>
  */
 public class TransmuteCli {
@@ -115,8 +114,6 @@ public class TransmuteCli {
               --auto-approve               Skip human approval gates (non-interactive)
               --verbose                    Verbose tool progress logging
               --dry-run                    Collect changes without writing files
-              --allow-order-conflicts      Warn instead of fail on unresolved ordering deps
-
             Environment variables:
               TRANSMUTE_MODEL_PROVIDER     Model provider name
               TRANSMUTE_MODEL_ID           Model ID
