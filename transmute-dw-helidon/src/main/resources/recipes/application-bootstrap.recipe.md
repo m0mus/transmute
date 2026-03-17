@@ -1,6 +1,6 @@
 ---
 name: Application Bootstrap
-type: feature
+type: recipe
 scope: project
 order: 2
 triggers:

@@ -1,6 +1,6 @@
 ---
 name: Build File Migration
-type: feature
+type: recipe
 scope: project
 order: 1
 triggers:
