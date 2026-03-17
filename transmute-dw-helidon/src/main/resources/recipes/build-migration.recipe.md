@@ -1,7 +1,6 @@
 ---
 name: Build File Migration
 type: recipe
-scope: project
 order: 1
 triggers:
   - files: [pom.xml, build.gradle, build.gradle.kts, build.xml]

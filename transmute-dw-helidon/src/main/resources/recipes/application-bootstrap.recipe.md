@@ -1,7 +1,6 @@
 ---
 name: Application Bootstrap
 type: recipe
-scope: project
 order: 2
 triggers:
   - files: [pom.xml]
