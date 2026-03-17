@@ -2,14 +2,12 @@
 
 ## 1. Overview
 
-Transmute is a domain-agnostic Java code migration framework. It orchestrates a
-deterministic-first, AI-assisted pipeline that migrates Java projects from one API or
-framework to another. Migration knowledge lives entirely in migration modules; the core
-framework contains none.
+Transmute is a domain-agnostic Java code migration framework. It orchestrates an
+AI-driven pipeline that migrates Java projects from one API or framework to another.
+Migration knowledge lives entirely in migration modules; the core framework contains none.
 
-The same infrastructure supports any Java-to-Java migration. The only thing that changes
-between, say, Dropwizard→Helidon and Spring→Quarkus is which migration module is on the
-classpath.
+The only thing that changes between, say, Dropwizard→Helidon and Spring→Quarkus is which
+migration module is on the classpath.
 
 ---
 
@@ -17,11 +15,9 @@ classpath.
 
 1. Provide a reusable, domain-agnostic migration orchestration pipeline.
 2. Make migration authoring easy — a markdown file is the minimum viable migration.
-3. Support both deterministic transforms (OpenRewrite, text rewriting) and AI-backed
-   transforms in a single unified model.
-4. Make the migration plan visible and auditable before execution (human-in-the-loop).
-5. Recover from compile errors with an AI agent; recover from test failures likewise.
-6. Keep migration modules as pure resource JARs when possible — no Java code required.
+3. Make the migration plan visible and auditable before execution (human-in-the-loop).
+4. Recover from compile errors with an AI agent; recover from test failures likewise.
+5. Keep migration modules as pure resource JARs — no Java code required.
 
 ### Non-Goals
 
@@ -36,8 +32,7 @@ classpath.
 ```
 Transmute/
   transmute-core/         All Java infrastructure:
-                            inventory, migration API, planner, workflow,
-                            AI agents, CLI, tool implementations
+                            inventory, planner, workflow, AI agents, CLI, tools
   transmute-dw-helidon/   Pure markdown resources — zero Java, zero deps:
                             recipes and features for Dropwizard 3 → Helidon 4 SE
 ```
@@ -55,19 +50,17 @@ TransmuteCli (entry point)
         │
         ├── [1]  CopyProjectTool       copy source → output dir (original untouched)
         ├── [2]  JavaProjectVisitor    build ProjectInventory (Java types, imports,
-        │                              annotations, supertypes, dependencies)
-        ├── [3]  MigrationDiscovery    find Java Migration impls via ClassGraph
-        │                              + load *.recipe.md / *.feature.md via MarkdownMigrationLoader
+        │                              annotations, supertypes)
+        ├── [3]  MigrationDiscovery    load *.recipe.md / *.feature.md from classpath
         ├── [4]  MigrationPlanner      evaluate triggers; resolve target files;
-        │                              topological sort by order() / after();
+        │                              topological sort by order / after;
         │                              derive scope (FILE vs PROJECT)
         ├── [5]  ApprovePlan           human gate (skipped if --auto-approve)
         │
         ├── [6]  ExecuteMigrations
-        │         ├── Java migrations → apply(MigrationContext) once
-        │         ├── FILE-scoped AI  → one agent call per file
+        │         ├── FILE-scoped recipes  → one agent call per file
         │         │     (all recipes targeting the same file merged into one prompt)
-        │         └── PROJECT-scoped AI → one agent call for the whole output dir
+        │         └── PROJECT-scoped features → one agent call for the whole output dir
         │
         ├── [7]  ReviewGate            human gate (skipped if --auto-approve)
         │
@@ -78,75 +71,54 @@ TransmuteCli (entry point)
 
 ---
 
-## 5. Migration Types
+## 5. Migrations
 
-### 5.1 Java Migrations
+All migrations are markdown files loaded from the classpath. There are two kinds:
 
-Implement `io.transmute.migration.Migration`:
+**Recipe** (`type: recipe`) — FILE scope. Triggered by Java file analysis (imports,
+annotations, supertypes). One AI agent call per matching file. All recipes targeting
+the same file are merged into one combined prompt so all transformations apply atomically.
 
-```java
-public interface Migration {
-    MigrationResult apply(MigrationContext ctx) throws Exception;
+**Feature** (`type: feature`) — PROJECT scope when using `files:` triggers (file
+existence); FILE scope if any trigger uses `imports`/`annotations`/`superTypes`. Scope
+is derived automatically — never declared explicitly.
 
-    default String name()                              { return getClass().getSimpleName(); }
-    default int order()                                { return 50; }
-    default List<String> after()                       { return List.of(); }
-    default boolean isTriggered(ProjectInventory inv)  { return true; }
-}
-```
-
-- Discovered automatically by ClassGraph — no registration, no annotation needed.
-- Called **once** per pipeline run. The migration uses `ctx.inventory()` to iterate
-  files itself (suitable for OpenRewrite and other batch transforms).
-- Scope is always PROJECT-like (one call, whole project).
-
-### 5.2 Markdown Migrations (Recipes and Features)
-
-Plain markdown files loaded from the classpath at `recipes/*.recipe.md` or
-`features/*.feature.md`. The front-matter configures trigger conditions, ordering,
-and postchecks. The markdown body becomes the AI system prompt.
-
-**Recipe** (`type: recipe`) — FILE scope. One AI agent call per matching Java file.
-All recipes triggered on the same file are merged into a single combined prompt so
-the AI applies all transformations atomically.
-
-**Feature** (`type: feature`) — PROJECT scope when using only `files:` triggers;
-FILE scope if any trigger uses `imports`/`annotations`/`superTypes`. Scope is derived
-automatically and never declared explicitly.
-
-#### Front-matter reference
+### Front-matter reference
 
 ```yaml
 ---
-name: My Migration        # required, unique name used in after: references
+name: My Migration        # required, unique; used for after: references and logs
 type: recipe              # recipe | feature
 order: 20                 # integer, default 50; lower = runs first
-after: [Other Migration]  # runs after these named migrations
+after: [Other Migration]  # must run after these named migrations
 triggers:
   - imports: [com.example.OldClass]        # file imports any of these
     annotations: [com.example.OldAnnot]    # file uses any of these annotations
     superTypes: [com.example.OldBase]      # file extends/implements any of these
   - files: [pom.xml, build.gradle]         # project root contains any of these files
 postchecks:
-  forbidImports: [com.example.OldClass]    # fail if any target file still imports these
-  requireImports: [com.example.NewClass]   # fail if target file does not import these
+  forbidImports: [com.example.OldClass]    # warn if target file still imports these
+  requireImports: [com.example.NewClass]   # warn if target file does not import these
 ---
+
+<markdown body — becomes the AI system prompt>
 ```
 
-Multiple trigger objects in the list are OR'd — the migration fires if **any** trigger
-matches. Fields within one trigger object are AND'd — all conditions must match.
+Multiple trigger objects are OR'd — the migration fires if **any** trigger matches.
+Fields within one trigger object are AND'd — all conditions must hold.
 
-#### Scope derivation
+### Scope derivation
 
 | Trigger types present | Derived scope |
 |-----------------------|---------------|
 | Any `imports` / `annotations` / `superTypes` | FILE (one call per matching file) |
 | Only `files` (or no triggers) | PROJECT (one call for the whole output dir) |
 
-#### Combined prompt for FILE-scoped recipes
+### Combined prompt for FILE-scoped recipes
 
 When multiple recipes target the same file, `MigrationWorkflow` builds one merged system
-prompt:
+prompt so the AI can apply all transformations atomically without recipes overwriting
+each other:
 
 ```
 You are an expert Java developer executing a framework migration.
@@ -154,7 +126,7 @@ Apply ALL sections below. Each section declares what it owns.
 Do not modify anything not covered by a section below.
 
 ## Recipe A (owns: @OldAnnotation)
-DO NOT touch: @OtherAnnotation (handled by other sections)
+DO NOT touch: OldBaseClass (handled by other sections)
 <Recipe A body>
 
 ## Recipe B (owns: OldBaseClass)
@@ -162,30 +134,25 @@ DO NOT touch: @OldAnnotation (handled by other sections)
 <Recipe B body>
 ```
 
-The `owns:` and `DO NOT touch:` lines are derived from the recipe's front-matter
-`annotations:` and `superTypes:` trigger conditions, preventing recipes from
-overwriting each other's territory.
+The `owns:` and `DO NOT touch:` lines are derived from the recipe's `annotations:` and
+`superTypes:` trigger conditions.
 
 ---
 
 ## 6. Trigger System
 
-### Java migrations
+`MigrationPlanner` evaluates each trigger object against the `ProjectInventory`:
 
-Override `isTriggered(ProjectInventory inventory)` to inspect the inventory and return
-`true` when the migration should run. Return `true` always to run unconditionally.
-
-### Markdown migrations
-
-`MigrationPlanner.markdownTriggerFires()` evaluates each trigger object:
-
-- **`imports`**: at least one Java file in the inventory imports a matching prefix.
-- **`annotations`**: at least one Java file uses a matching annotation.
-- **`superTypes`**: at least one Java file extends/implements a matching type.
+- **`imports`**: at least one Java file imports a matching prefix.
+- **`annotations`**: at least one Java file uses a matching annotation FQN.
+- **`superTypes`**: at least one Java file extends/implements a matching type FQN.
 - **`files`**: the named file exists in `inventory.getRootDir()`.
+- **`signals`**: all listed signals are present in `inventory.getSignals()`.
+- **`compileErrors`**: all listed regex patterns match at least one compile error string
+  (used for error-triggered migrations).
 
-For FILE-scoped triggers, the planner also builds the list of matching target files
-(used by `MigrationWorkflow` to drive the per-file agent loop).
+For FILE-scoped triggers, the planner also builds the list of matching target files,
+which drives the per-file agent loop in `MigrationWorkflow`.
 
 ---
 
@@ -205,29 +172,28 @@ io.transmute.agent/
     MigrationWorkflow.java    10-step sequential pipeline; ANSI-colored console output
 
 io.transmute.migration/
-  Migration.java              Core interface (apply, name, order, after, isTriggered)
-  MigrationContext.java       Per-invocation context (inventory, projectState, model, workspace, log)
+  Migration.java              Planning interface: name(), order(), after()
+  AiMigration.java            Loaded markdown migration (implements Migration + AiMigrationMetadata)
+  AiMigrationMetadata.java    Full migration metadata: triggers, postchecks, scope, body, etc.
   MigrationResult.java        Result: success flag, message, list of FileChanges
   FileChange.java             Before/after content of one file
   Workspace.java              Path helpers: sourceDir, outputDir, dryRun flag
   MigrationScope.java         Enum: FILE | PROJECT
-  AiMigration.java            Loaded markdown migration (implements Migration + AiMigrationMetadata)
-  AiMigrationMetadata.java    Interface: skillName, skillScope, systemPromptSection, ...
   MarkdownTrigger.java        Record: imports, annotations, superTypes, signals, compileErrors, files
-  MarkdownPostchecks.java     Record: forbidImports, requireImports
+  MarkdownPostchecks.java     Record: forbidImports, requireImports, forbidPatterns, requireTodos
   postcheck/
-    PostcheckRunner.java      Evaluates postchecks; returns list of failure messages
-    PostcheckRule.java        One rule (type + pattern)
+    PostcheckRunner.java      Evaluates postchecks after FILE-scoped migrations
+    PostcheckRule.java        One check (lambda over FileChange)
     PostcheckResult.java      Pass/fail with description
 
 io.transmute.catalog/
-  MigrationDiscovery.java     Discovers Java Migration impls (ClassGraph) + markdown files
+  MigrationDiscovery.java     Loads *.recipe.md / *.feature.md from classpath
   MigrationPlanner.java       Evaluates triggers; builds sorted, scoped MigrationPlan
   MigrationPlan.java          Ordered list of MigrationExecutionEntry (migration + targetFiles + confidence)
-  MarkdownMigrationLoader.java Scans classpath for *.recipe.md / *.feature.md; parses front-matter
+  MarkdownMigrationLoader.java Scans classpath for markdown migrations; parses front-matter
   RecipeFrontMatter.java      Jackson-mapped front-matter record
   MigrationConfidence.java    Enum: HIGH | MEDIUM | LOW
-  FeatureConflictException.java Thrown when two migrations have an unresolvable ordering conflict
+  FeatureConflictException.java Thrown on unresolvable ordering cycle
   MigrationLog.java           Append-only log of migration outcomes per file
   MigrationLogEntry.java      One log entry (migration name, file, status, message)
   ProjectState.java           Mutable inter-migration shared state bag
@@ -263,7 +229,6 @@ interactions. Three providers are supported:
 | Step | AI? | Details |
 |------|-----|---------|
 | 1–5 | No | Pure Java |
-| 6 — Java migrations | No | Deterministic |
 | 6 — Recipe/Feature execution | **Yes** | `SingleFileAgent` (FILE) or project-scope agent |
 | 7 | No | Human gate |
 | 8 — Compile fix | **Yes** | `FixCompileErrorsAgent` with file I/O tools |
@@ -281,44 +246,39 @@ Set `TRANSMUTE_LOG_PROMPTS=true` (default). All prompts and responses are writte
 
 Migrations are topologically sorted by two mechanisms:
 
-1. **`order()`** — numeric priority. Lower values run first. Default: 50.
-2. **`after()`** — explicit name-based "must run after" constraints.
+1. **`order:`** — numeric priority. Lower values run first. Default: 50.
+2. **`after:`** — explicit name-based "must run after" constraints. Names match the
+   `name:` field in front-matter exactly.
 
-Markdown migrations use `order:` and `after:` in front-matter. Java migrations override
-the interface default methods. Names are compared by exact string equality; markdown
-names come from the `name:` field, Java migration names from `getClass().getSimpleName()`
-(overridable via `name()`).
-
-If a cycle is detected or an `after:` references a name that is not in the plan,
-`MigrationPlanner` throws `FeatureConflictException` unless `--allow-order-conflicts`
-is set (in which case it logs a warning and proceeds).
+If a cycle is detected or an `after:` references a name not in the active plan,
+`MigrationPlanner` logs a warning. Set `--allow-order-conflicts` to suppress the
+warning; omit it to treat it as an error.
 
 ---
 
 ## 10. Postcheck Rules
 
-After each FILE-scoped AI migration completes, `PostcheckRunner` evaluates the postchecks
+After each FILE-scoped migration completes, `PostcheckRunner` evaluates the postchecks
 declared in the front-matter against the file's after-content:
 
 | Rule type | Description |
 |-----------|-------------|
-| `forbidImports` | Fails if the output file still imports any listed prefix |
-| `requireImports` | Fails if the output file does not import any listed prefix |
+| `forbidImports` | Warns if the output file still imports any listed prefix |
+| `requireImports` | Warns if the output file does not import any listed prefix |
+| `forbidPatterns` | Warns if the output file matches any listed regex |
+| `requireTodos` | Warns if the output does not contain any listed TODO string |
 
 Failures are logged to the console as warnings (yellow `⚠`). They do not abort the
-pipeline — they signal that the AI may not have fully applied the migration and flag
-the file for manual review.
+pipeline — they flag files that may need manual review.
 
 ---
 
 ## 11. Adding a New Migration Module
 
-1. Create a Maven project. Add no dependencies (not even `transmute-core` — migrations
-   run in the context of the tool's classpath, not compiled against it at test time).
+1. Create a Maven project with no dependencies.
 2. Create `src/main/resources/recipes/` and/or `src/main/resources/features/`.
 3. Write `.recipe.md` or `.feature.md` files with front-matter + AI prompt body.
-4. Optionally implement `Migration` in Java for deterministic transforms.
-5. Build the JAR and place it on the classpath alongside `transmute-core-*.jar`:
+4. Build the JAR and place it on the classpath alongside `transmute-core-*.jar`:
 
 ```bash
 java -cp transmute-core-1.0-SNAPSHOT.jar:my-migration-1.0.jar \
@@ -328,5 +288,5 @@ java -cp transmute-core-1.0-SNAPSHOT.jar:my-migration-1.0.jar \
      --api-key $OPENAI_API_KEY
 ```
 
-No `--skills-package` flag or registration is needed. `MigrationDiscovery` finds
-everything automatically.
+`MigrationDiscovery` loads all markdown files from `recipes/` and `features/` on the
+classpath automatically — no registration or configuration needed.

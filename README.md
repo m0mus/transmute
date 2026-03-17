@@ -16,45 +16,21 @@ For the full design, rationale, and API reference see [PROJECT.md](PROJECT.md).
 1. Copy project to an output directory (original is untouched)
 2. Scan the project: build a ProjectInventory of all Java types, imports, annotations,
    and inter-module relationships
-3. Discover migrations: Java implementations of Migration + markdown recipe/feature files
-   on the classpath
+3. Discover migrations: load *.recipe.md / *.feature.md files from the classpath
 4. Plan: evaluate trigger conditions against the inventory; resolve target files;
-   sort by order() with after() dependency constraints; derive execution scope
+   sort by order / after dependency constraints; derive execution scope
 5. Human approval gate — the plan is shown before anything is executed
 6. Execute migrations in order:
-     • Java migrations — called once, iterate files themselves via ctx.inventory()
      • Recipes (FILE scope) — one AI agent call per file, all matching recipes merged
      • Features (PROJECT scope) — one AI agent call for the whole output directory
 7. Human review gate
-8. Compile-fix loop: re-run AI agent for each failure batch (max 5 iterations)
-9. Test-fix loop: run tests; AI agent fixes failures (max 5 iterations)
+8. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
+9. Test-fix loop: AI agent fixes test failures (max 5 iterations)
 10. Generate a migration report (JSON)
 ```
 
-Two kinds of migration live side by side in the same pipeline:
-
-**Java migrations** — implement the `Migration` interface directly. Used for deterministic,
-AST-based transforms (e.g. OpenRewrite recipes).
-
-```java
-public class MyMigration implements Migration {
-    @Override
-    public int order() { return 10; }
-
-    @Override
-    public boolean isTriggered(ProjectInventory inventory) {
-        return inventory.getJavaFiles().stream()
-            .anyMatch(f -> f.getImports().stream().anyMatch(i -> i.startsWith("javax.ws.rs.")));
-    }
-
-    @Override
-    public MigrationResult apply(MigrationContext ctx) throws Exception { ... }
-}
-```
-
-**Markdown migrations** — plain `.recipe.md` or `.feature.md` files loaded from the
-classpath. No Java code needed. The front-matter declares the trigger and order; the body
-is the AI system prompt.
+Migrations are plain `.recipe.md` or `.feature.md` files. The front-matter declares
+the trigger conditions, execution order, and postchecks. The body is the AI system prompt.
 
 ```markdown
 ---
@@ -63,6 +39,8 @@ type: recipe          # recipe = FILE scope, feature = PROJECT scope
 order: 20
 triggers:
   - imports: [com.example.OldApi]
+postchecks:
+  forbidImports: [com.example.OldApi]
 ---
 
 Migrate usages of OldApi to NewApi. Replace ...
@@ -74,7 +52,7 @@ Migrate usages of OldApi to NewApi. Replace ...
 
 ```
 Transmute/
-  transmute-core/       All Java: inventory, migration API, planner, workflow,
+  transmute-core/       All Java: inventory, planner, workflow,
                         AI agents, CLI entry point, tool implementations
   transmute-dw-helidon/ Pure markdown: recipes and features for Dropwizard 3 → Helidon 4 SE
 ```
@@ -88,7 +66,7 @@ the two JARs on the classpath together.
 | Package | Contents |
 |---------|----------|
 | `io.transmute.inventory` | `ProjectInventory`, `JavaFileInfo`, `JavaProjectVisitor` |
-| `io.transmute.migration` | `Migration`, `MigrationContext`, `MigrationResult`, `FileChange`, `Workspace`, `AiMigration`, `AiMigrationMetadata`, `MarkdownTrigger`, `MarkdownPostchecks`, `MigrationScope` |
+| `io.transmute.migration` | `AiMigration`, `AiMigrationMetadata`, `MigrationResult`, `FileChange`, `Workspace`, `MarkdownTrigger`, `MarkdownPostchecks`, `MigrationScope` |
 | `io.transmute.migration.postcheck` | `PostcheckRunner`, `PostcheckRule`, `PostcheckResult` |
 | `io.transmute.catalog` | `MigrationDiscovery`, `MigrationPlanner`, `MigrationPlan`, `MarkdownMigrationLoader`, `RecipeFrontMatter` |
 | `io.transmute.agent` | `TransmuteCli`, `TransmuteConfig`, `ModelFactory` |
@@ -120,7 +98,6 @@ The recommended way is to use the bundled scripts:
 
 **Linux / macOS**
 ```bash
-# Defaults to C:/Users/dmitr/GitHub/dropwizard/dropwizard-example
 bash scripts/run.sh /path/to/my-dropwizard-app
 ```
 
@@ -169,7 +146,7 @@ java -cp transmute-core.jar;transmute-dw-helidon.jar ^
 | `--profile` | *(none)* | Maven profile(s) to activate during compile/test (repeatable) |
 | `--auto-approve` | false | Skip human approval/review gates |
 | `--dry-run` | false | Compute changes but do not write files |
-| `--allow-order-conflicts` | false | Warn instead of fail on `after()` ordering violations |
+| `--allow-order-conflicts` | false | Warn instead of fail on ordering violations |
 
 ### Environment variables
 
@@ -187,13 +164,8 @@ java -cp transmute-core.jar;transmute-dw-helidon.jar ^
 
 ## Writing a migration module
 
-A migration module is a Maven project with no dependencies other than `transmute-core`.
-It contributes migrations in two ways — they can be mixed freely:
-
-### Option A — Markdown migrations (preferred)
-
-Place `.recipe.md` or `.feature.md` files under `src/main/resources/recipes/` or
-`src/main/resources/features/`. No Java code required.
+A migration module is a Maven project with no dependencies. Place `.recipe.md` or
+`.feature.md` files under `src/main/resources/recipes/` or `src/main/resources/features/`.
 
 **Front-matter fields:**
 
@@ -216,25 +188,21 @@ triggers:
   - files: [pom.xml, build.gradle]        # project root contains any of these files
 ```
 
-Scope is derived automatically: a migration is FILE-scoped if any trigger uses
-`imports`, `annotations`, or `superTypes`; it is PROJECT-scoped if triggers use only
-`files` (or if there are no triggers).
+Scope is derived automatically: FILE if any trigger uses `imports`, `annotations`, or
+`superTypes`; PROJECT if triggers use only `files` (or there are no triggers).
 
-### Option B — Java migrations
+Build the JAR and place it on the classpath alongside `transmute-core-*.jar`:
 
-Implement `io.transmute.migration.Migration`:
-
-```java
-public class MyMigration implements Migration {
-    @Override public int order() { return 10; }
-    @Override public List<String> after() { return List.of("Other Migration"); }
-    @Override public boolean isTriggered(ProjectInventory inventory) { return true; }
-    @Override public MigrationResult apply(MigrationContext ctx) throws Exception { ... }
-}
+```bash
+java -cp transmute-core-1.0-SNAPSHOT.jar:my-migration-1.0.jar \
+     io.transmute.agent.TransmuteCli \
+     --project-dir /path/to/project \
+     --model-provider openai \
+     --api-key $OPENAI_API_KEY
 ```
 
-`MigrationDiscovery` finds all `Migration` implementations on the classpath automatically
-via ClassGraph — no registration required.
+No registration or configuration needed — `MigrationDiscovery` loads all markdown files
+from `recipes/` and `features/` on the classpath automatically.
 
 ---
 
