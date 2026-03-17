@@ -1,212 +1,135 @@
 # transmute-dw-helidon
 
-`MigrationSkill` implementations for migrating **Dropwizard 3** projects to
+Markdown-based migration module for migrating **Dropwizard 3** projects to
 **Helidon 4 SE** (declarative HTTP server, service registry injection).
 
-Depends only on `transmute-core`. No dependency on `transmute-agent` or any LLM
-library — all four skills in this module are fully deterministic.
+This module contains **zero Java code** and **zero dependencies** — only
+`.recipe.md` and `.feature.md` resource files. It is assembled with
+`transmute-core` at runtime by placing both JARs on the classpath.
 
 ---
 
-## Skills overview
+## Migrations overview
 
-Skills run in this order. Each skill declares its trigger conditions and
-`@Skill(after=...)` constraints so the planner enforces the ordering automatically.
+Migrations run in this order. Scope and triggers are declared in each file's
+front-matter and derived automatically by the planner.
 
-| Order | Skill | Scope | Strategy |
-|-------|-------|-------|----------|
-| 1 | `PomMigrationSkill` | PROJECT | Replace `pom.xml` with Helidon 4 SE template |
-| 5 | `DwOrphansSkill` | PROJECT | Text-based DW_POJO / DW_COMMENT / DW_REMOVE |
-| 10 | `JaxrsAnnotationsSkill` | PROJECT | OpenRewrite recipe chain |
-| 20 | `HealthCheckSkill` | FILE | Regex-based HealthCheck API migration |
+| Order | File | Type | Scope | Trigger |
+|-------|------|------|-------|---------|
+| 1 | `features/build-migration.feature.md` | feature | PROJECT | `pom.xml`, `build.gradle`, etc. present |
+| 5 | `recipes/jaxrs-rest-resource.recipe.md` | recipe | FILE | `@Path` annotation or `javax.ws.rs.` imports |
+| 20 | `recipes/health-check.recipe.md` | recipe | FILE | `com.codahale.metrics.health.HealthCheck` / `io.dropwizard.health.HealthCheck` import or supertype |
 
 ---
 
-## PomMigrationSkill — order 1, PROJECT scope
+## Build File Migration — order 1, PROJECT scope
 
-Replaces the project `pom.xml` with a Helidon 4 SE parent POM template, preserving
-the project's identity and non-Dropwizard dependencies.
+`features/build-migration.feature.md`
+
+Triggered when any of `pom.xml`, `build.gradle`, `build.gradle.kts`, or `build.xml`
+exists in the project root. Runs before any file-level recipes.
 
 ### What it does
 
-- Reads the original `pom.xml` from the output directory.
-- Loads the Helidon 4 SE parent template from
-  `classpath:/templates/helidon-declarative-pom.xml`.
-- Merges:
-  - `groupId`, `artifactId`, `version`, `name` from the original POM.
-  - Non-Dropwizard, non-Helidon `<dependencies>` entries (third-party libraries are
-    preserved).
-  - Non-Dropwizard `<dependencyManagement>` entries (BOM imports excluded).
-  - Custom `<properties>` not already present in the template.
-- Re-adds transitive dependencies that DW bundles were providing implicitly:
+1. Detects the build system (Maven, Gradle Kotlin DSL, Gradle Groovy DSL, Ant).
+2. Extracts project identity (`groupId`, `artifactId`, `version`, `name`, `mainClass`).
+3. Produces a migrated build file using the Helidon 4 SE Maven parent BOM (or
+   equivalent Gradle configuration) as the structural base:
+   - **Removes** all `io.dropwizard`, `org.glassfish.jersey`, `com.codahale.metrics`,
+     `javax.ws.rs`, `jakarta.ws.rs`, and `org.eclipse.jetty` dependencies.
+   - **Keeps** all other application dependencies (databases, serialization, utilities).
+   - **Keeps** non-Dropwizard `<dependencyManagement>` and `<properties>` entries.
+   - Does **not** duplicate dependencies already declared in the Helidon template.
+4. Writes the migrated build file back in place.
 
-  | Removed DW bundle | Re-added dependency |
-  |-------------------|-------------------|
-  | `dropwizard-hibernate` | `hibernate-core 6.4.4.Final`, `jakarta.persistence-api 3.1.0` |
-  | `dropwizard-db` | `HikariCP 5.1.0` |
-  | `dropwizard-migrations` | `liquibase-core 4.27.0` |
-  | `dropwizard-views-freemarker` | `freemarker 2.3.32` |
-  | `dropwizard-views-mustache` | `compiler 0.9.14` |
-  | `dropwizard-jdbi3` | `jdbi3-core 3.45.0`, `jdbi3-sqlobject 3.45.0` |
+### Helidon 4 SE Maven template (base)
 
-### What it removes
+The feature embeds the following template inline — the AI fills in identity values
+and merges preserved dependencies into the `<dependencies>` section:
 
-Any dependency from these group IDs or patterns:
-`io.dropwizard`, `org.glassfish.jersey`, `com.codahale.metrics`,
-`javax.ws.rs`, `jakarta.ws.rs`, `org.eclipse.jetty`
+- `io.helidon.applications:helidon-se` parent BOM (version 4.3.4)
+- `helidon-webserver`, `helidon-http-media-jsonb`, `helidon-service-registry`,
+  `helidon-config-yaml`, `helidon-logging-jul`
+- `helidon-service-maven-plugin` with `create-application` goal
+- `helidon-bundles-apt` annotation processor
 
 ### What it does NOT do
 
-- Does not handle multi-module POM hierarchies (parent POMs or aggregators). Only
-  the root `pom.xml` in the output directory is processed.
-- Does not migrate custom Maven plugin configuration (e.g. Shade, Assembly, custom
-  lifecycle bindings). Review plugin config manually after migration.
+- Does not handle multi-module POM hierarchies. Only the root build file is processed.
+- Does not migrate custom Maven plugin configuration (Shade, Assembly, etc.) —
+  review plugin config manually.
+- For Gradle / Ant: uses the same logic but with idiomatic syntax for the detected
+  build tool.
 
 ---
 
-## DwOrphansSkill — order 5, PROJECT scope
+## REST Resource Recipe — order 5, FILE scope
 
-Handles Dropwizard types that have no direct Helidon equivalent using three text-based
-strategies. Works on raw source text — no AST required. Safe to run multiple times
-(idempotent).
+`recipes/jaxrs-rest-resource.recipe.md`
 
-**Trigger:** any file containing imports starting with `io.dropwizard.` or
-`com.codahale.metrics.`
+Triggered on Java files that use `@javax.ws.rs.Path` or import from `javax.ws.rs.`.
+Runs before HealthCheck migration.
+Postcheck: forbids residual `javax.ws.rs.*` or `jakarta.ws.rs.*` imports.
 
-### DW_POJO — strip extends/implements, keep the class body
+### What it does
 
-Applied to types that were DW base classes or interfaces with no Helidon equivalent.
-The extends/implements clause is removed; all fields, constructors, and methods are
-preserved as plain Java. A `DW_MIGRATION_TODO[pojo]` comment is added at the class
-level explaining what manual work remains.
+**Class-level:**
+- Adds `@Http.Endpoint` (import `io.helidon.webserver.http.Http`)
+- Adds `@Service.Singleton` (import `io.helidon.service.registry.Service`)
+- Removes class-level `@Path` — the path moves to each method annotation
 
-| Removed base type | TODO hint |
-|-------------------|-----------|
-| `extends View` | Implement templating manually (Freemarker, Mustache via plain Java) |
-| `extends AbstractDAO` | Inject `EntityManager` or `SessionFactory` directly |
-| `implements Managed` | Register `start()`/`stop()` with Helidon lifecycle |
-| `implements Authenticator` | Implement Helidon Security authenticator |
-| `implements Authorizer` | Implement Helidon Security authorizer |
-| `implements UnauthorizedHandler` | Implement Helidon Security handler |
+**HTTP method annotations:**
 
-### DW_COMMENT — comment out import and usages
+| Remove | Add |
+|--------|-----|
+| `@GET` + `@Path("/foo")` | `@Http.GET(path = "/foo")` |
+| `@POST` + `@Path("/foo")` | `@Http.POST(path = "/foo")` |
+| `@PUT` + `@Path("/foo")` | `@Http.PUT(path = "/foo")` |
+| `@DELETE` + `@Path("/foo")` | `@Http.DELETE(path = "/foo")` |
+| `@PATCH` / `@HEAD` / `@OPTIONS` | equivalent `@Http.*` forms |
 
-Applied to types whose Java API has no Helidon equivalent. The import line is
-commented out with a `DW_MIGRATION_TODO[removed]:` prefix; field declarations and
-annotations of the type are commented out with a `DW_MIGRATION_TODO[manual]:` prefix.
+**Parameter annotations:**
 
-Covered types:
+| Remove | Add |
+|--------|-----|
+| `@PathParam("x")` | `@Http.PathParam("x")` |
+| `@QueryParam("x")` | `@Http.QueryParam("x")` |
+| `@HeaderParam("x")` | `@Http.HeaderParam("x")` |
+| Body params (no annotation on POST/PUT/PATCH/DELETE) | `@Http.Entity` |
 
-| Type | Treatment |
-|------|-----------|
-| `io.dropwizard.auth.Auth` | `@Auth` replaced with inline comment |
-| `io.dropwizard.hibernate.UnitOfWork` | `@UnitOfWork` replaced with line comment |
-| `io.dropwizard.auth.AuthDynamicFeature` | Import commented out |
-| `io.dropwizard.auth.AuthFilter` | Import commented out |
-| `io.dropwizard.setup.Environment` | Field declaration commented out |
-| `io.dropwizard.jersey.setup.JerseyEnvironment` | Field declaration commented out |
-| `com.codahale.metrics.Counter/Timer/Meter/Histogram/Gauge/MetricRegistry` | Field declaration commented out |
-| `javax/jakarta.annotation.security.PermitAll` | `@PermitAll` replaced with line comment |
-| `javax/jakarta.annotation.security.RolesAllowed` | `@RolesAllowed(...)` replaced with line comment |
-| `javax/jakarta.ws.rs.core.SecurityContext` | Type replaced with `Object` + inline comment |
+**Dropwizard param wrappers → Java types** (`.get()` calls removed):
+`IntParam`, `LongParam`, `BooleanParam`, `FloatParam`, `DoubleParam`, `StringParam`,
+`UUIDParam` → `UUID`, `LocalDateParam` → `LocalDate`
 
-### DW_REMOVE — silently remove import lines
+**Response type:**
+- `javax/jakarta.ws.rs.core.Response` → `void` (for simple ok responses) or
+  `ServerResponse` with a `DW_MIGRATION_TODO` comment
 
-Pure infrastructure plumbing that adds no value to the migrated code:
+**`@Produces` / `@Consumes`:** replaced with `DW_MIGRATION_TODO` comments
 
-- `io.dropwizard.Bundle`
-- `io.dropwizard.ConfiguredBundle`
+**Dropwizard base classes:** `extends`/`implements` clause removed + TODO comment
 
----
-
-## JaxrsAnnotationsSkill — order 10, PROJECT scope
-
-Runs the full JAX-RS → Helidon annotation migration using OpenRewrite recipes plus
-text-based post-processing. Operates on every Java file in the output directory.
-
-**Trigger:** any file importing `javax.ws.rs.*` or `jakarta.ws.rs.*`
-**Postcheck:** forbids residual `javax.ws.rs.*` or `jakarta.ws.rs.*` imports
-
-### OpenRewrite recipe chain (in order)
-
-**1. JaxrsToHelidonRecipe**
-
-- Adds `@RestServer.Endpoint` (`io.helidon.webserver.http.RestServer`) to any class
-  that has `@Path` on the class itself or any of its methods.
-- Adds `@Service.Singleton` (`io.helidon.service.registry.Service`) to the same classes.
-- Adds `@Http.Entity` to body parameters of `@POST`, `@PUT`, `@PATCH`, `@DELETE`
-  methods that do not already have a param annotation.
-- Removes `@Produces` and `@Consumes` via the `isProducesOrConsumes` guard (they are
-  handled by the text post-processing step below).
-
-**2. ChangeType recipes** — FQN renames for all JAX-RS annotations
-
-| From (javax / jakarta) | To (Helidon) |
-|------------------------|--------------|
-| `*.ws.rs.GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS` | `io.helidon.http.Http$GET` etc. |
-| `*.ws.rs.Path` | `io.helidon.http.Http$Path` |
-| `*.ws.rs.PathParam` | `io.helidon.http.Http$PathParam` |
-| `*.ws.rs.QueryParam` | `io.helidon.http.Http$QueryParam` |
-| `*.ws.rs.HeaderParam` | `io.helidon.http.Http$HeaderParam` |
-| `*.inject.Inject` | `io.helidon.service.registry.Service$Inject` |
-| `*.inject.Singleton` | `io.helidon.service.registry.Service$Singleton` |
-
-**3. DropwizardParamRecipe** — DW param wrapper types → Java types
-
-| From | To | Import added |
-|------|----|--------------|
-| `LocalDateParam` | `LocalDate` | `java.time.LocalDate` |
-| `IntParam` | `Integer` | — |
-| `LongParam` | `Long` | — |
-| `BooleanParam` | `Boolean` | — |
-| `FloatParam` | `Float` | — |
-| `DoubleParam` | `Double` | — |
-| `StringParam` | `String` | — |
-| `UUIDParam` | `UUID` | `java.util.UUID` |
-
-Also removes `.get()` calls on method parameters that used these wrapper types.
-
-**4. Response type migration**
-- `javax.ws.rs.core.Response` → `io.helidon.webserver.http.ServerResponse`
-- `jakarta.ws.rs.core.Response` → `io.helidon.webserver.http.ServerResponse`
-
-**5. RemoveUnusedImports** — cleans up stale import statements.
-
-### Text post-processing (after OpenRewrite)
-
-| Transform | Result |
-|-----------|--------|
-| `@Produces(...)` / `@Consumes(...)` | Replaced with `DW_MIGRATION_TODO: Review @Produces/@Consumes` comment |
-| `import javax/jakarta.ws.rs.Produces/Consumes` | Import line removed |
-| `@Timed/@Metered/@ExceptionMetered/@Counted/@Gauge/@CacheControl` | Replaced with `DW_MIGRATION_TODO: Replace Dropwizard @<name>` comment |
-| `import com.codahale.metrics.annotation.*` | Import line removed |
-| `import io.dropwizard.jersey.caching.CacheControl` | Import line removed |
-| `@Context` (field/param) | Replaced with `DW_MIGRATION_TODO: Replace Context injection` comment |
-| `extends View` (Dropwizard views) | Extends clause removed; View return types replaced with `String`; `return new View(...)` replaced with `return ""` |
-| `MediaType.` usage | `DW_MIGRATION_TODO: Review @Produces/@Consumes media types` added at top of file |
-| `ServerResponse` usage | `DW_MIGRATION_TODO: Review ServerResponse usage` added at top of file |
+**Import cleanup:** removes all `javax.ws.rs.*`, `jakarta.ws.rs.*`,
+`io.dropwizard.jersey.params.*`, `io.dropwizard.jersey.jsr310.*`
 
 ### What it does NOT do
 
-- Does not migrate `@FormParam` (no Helidon equivalent; left for manual review).
-- Does not migrate JAX-RS `ExceptionMapper`, `ContainerRequestFilter`,
-  `ContainerResponseFilter`, or other `@Provider` types — these require significant
-  manual rework in Helidon's filter/error-handling model.
-- Does not migrate `javax.ws.rs.client.*` (client-side API) — Helidon uses a
-  different HTTP client API.
-- Does not migrate JAX-RS sub-resources (`@Path` on return type) or
-  `@BeanParam` patterns.
-- Does not configure media type serialisation (Jackson, JSON-B) in the Helidon app.
+- Does not migrate `@FormParam` (no direct Helidon equivalent).
+- Does not migrate JAX-RS `ExceptionMapper`, `ContainerRequestFilter`, `@Provider` types.
+- Does not migrate JAX-RS client code (`javax.ws.rs.client.*`).
+- Does not migrate `@Context` injection (commented out with TODO by intent).
+- Does not touch `@Inject`, metrics annotations, `@Auth`, `@UnitOfWork` —
+  those are handled by separate feature skills.
 
 ---
 
-## HealthCheckSkill — order 20, FILE scope
+## HealthCheck Migration Recipe — order 20, FILE scope
 
-Migrates Dropwizard `HealthCheck` implementations to the Helidon 4 health check API.
+`recipes/health-check.recipe.md`
 
-**Trigger:** files that import `com.codahale.metrics.health.HealthCheck` or
-`io.dropwizard.health.HealthCheck`, or whose supertype is one of those.
-**Postcheck:** forbids residual `com.codahale.metrics.health.HealthCheck` imports.
+Triggered on Java files that import or extend `com.codahale.metrics.health.HealthCheck`
+or `io.dropwizard.health.HealthCheck`.
+Postcheck: forbids residual `com.codahale.metrics.health.HealthCheck` imports.
 
 ### Transformations
 
@@ -217,82 +140,50 @@ Migrates Dropwizard `HealthCheck` implementations to the Helidon 4 health check 
 | `import io.dropwizard.health.HealthCheck` | Removed |
 | *(new)* | `import io.helidon.health.HealthCheck` |
 | *(new)* | `import io.helidon.health.HealthCheckResponse` |
-| `extends HealthCheck` | `implements HealthCheck` |
+| `extends HealthCheck` | `implements io.helidon.health.HealthCheck` |
 | `protected Result check() throws Exception {` | `@Override public HealthCheckResponse call() {` |
 | `Result.healthy()` | `HealthCheckResponse.builder().status(true).build()` |
 | `Result.healthy(message)` | `HealthCheckResponse.builder().status(true).detail("message", message).build()` |
 | `Result.unhealthy(message)` | `HealthCheckResponse.builder().status(false).detail("message", message).build()` |
+| `Result.unhealthy(exception)` | `HealthCheckResponse.builder().status(false).detail("message", ex.getMessage()).build()` |
 
-Any remaining `Result.` usage (e.g. stored results, complex builder chains) is
-annotated with an inline `DW_MIGRATION_TODO` for manual review.
+Checked exceptions formerly declared on `check()` are wrapped in try/catch returning
+an unhealthy response (since `call()` does not declare `throws Exception`).
+
+Any other `Result.` usage is annotated with `DW_MIGRATION_TODO[manual]`.
 
 ### What it does NOT do
 
-- Does not register health checks with the Helidon server; that wiring is
-  application-specific and must be done manually.
-- Does not migrate `HealthCheckRegistry` usage or composite health checks.
+- Does not register health checks with the Helidon server — wiring is application-specific.
+- Does not migrate `HealthCheckRegistry` or composite health checks.
 
 ---
 
-## DropwizardSourceTypeRegistry
+## What is covered vs. requires manual work
 
-`io.transmute.dw.DropwizardSourceTypeRegistry` implements `SourceTypeRegistry` and
-declares FQN pattern coverage for the compile error classifier. All types in the
-following namespaces are considered the responsibility of this skill module:
+### Covered
 
-```
-io\.dropwizard\..*
-com\.codahale\.metrics\..*
-javax\.ws\.rs\..*
-jakarta\.ws\.rs\..*
-javax\.inject\..*
-jakarta\.inject\..*
-org\.glassfish\.jersey\..*
-org\.eclipse\.jetty\..*
-org\.hibernate\.validator\..*
-io\.dropwizard\.jersey\.params\..*
-io\.dropwizard\.jersey\.jsr310\..*
-```
-
-If a compile error references a type matching any of these patterns and a skill
-previously touched the affected file, the error is classified `SKILL_GAP` and the
-responsible skill is re-run on that file. If no skill touched the file the error is
-classified `COMPILE_ONLY` and handled by error-triggered skills (order ≥ 200).
-Everything else is `NOVEL` and routed to the AI compile-fix agent.
-
----
-
-## What is covered vs. manual
-
-### Covered (deterministic, no AI needed)
-
-- POM replacement (Helidon 4 parent BOM, core Helidon deps, non-DW dep preservation)
-- Bundle transitive dep re-injection (Hibernate, HikariCP, Liquibase, JDBI3, templates)
+- Build file migration (Maven / Gradle / Ant → Helidon 4 SE)
 - JAX-RS HTTP method and path annotations → `@Http.*`
-- JAX-RS param annotations → `@Http.PathParam`, `@Http.QueryParam`, `@Http.HeaderParam`
-- CDI inject/singleton → `@Service.Inject`, `@Service.Singleton`
+- JAX-RS param annotations → `@Http.PathParam / QueryParam / HeaderParam`
 - Body parameter detection → `@Http.Entity`
-- `@Endpoint` and `@Singleton` added to resource classes
-- DW jersey param wrappers → Java types (`.get()` removal)
-- `javax.ws.rs.core.Response` → `io.helidon.webserver.http.ServerResponse`
+- `@Http.Endpoint` + `@Service.Singleton` added to resource classes
+- DW Jersey param wrappers → Java types (`.get()` removal)
+- `javax.ws.rs.core.Response` → `void` / `ServerResponse`
 - `@Produces` / `@Consumes` replaced with TODO comments
-- Codahale metrics annotations replaced with TODO comments
-- `@Auth`, `@UnitOfWork`, `@PermitAll`, `@RolesAllowed` commented out with hints
-- `SecurityContext` typed as `Object` with a TODO comment
-- DW base class stripping (View, AbstractDAO, Managed, Authenticator, Authorizer)
-- DW Bundle import removal
-- View template migration (return type `String`, stub return value)
+- DW base class stripping (View, AbstractDAO, Managed, etc.)
+- Bundle import removal
 - HealthCheck API migration (interface, method signature, `Result` → builder)
 
 ### Requires manual work (TODOs inserted)
 
-- Security integration (Helidon Security auth filters, security context binding)
-- Metrics integration (Helidon Micrometer or MicroProfile Metrics)
-- `@Context` injection points (JAX-RS context injection has no direct Helidon equivalent)
-- `@Produces` / `@Consumes` media type configuration (verify against Helidon defaults)
-- `ServerResponse` usage patterns (JAX-RS fluent builder ≠ Helidon response model)
-- JAX-RS `@Provider` implementations (exception mappers, request/response filters)
+- Security integration (`@Auth`, `SecurityContext`, `@RolesAllowed`, `@PermitAll`)
+- Metrics integration (`@Timed`, `MetricRegistry`, etc.)
+- `@Context` injection points
+- `@Produces` / `@Consumes` media type configuration
+- `ServerResponse` usage patterns
+- JAX-RS `@Provider` implementations (exception mappers, filters)
 - JAX-RS client code (`javax.ws.rs.client.*`)
 - `HealthCheckRegistry` wiring and composite health checks
-- Custom Maven plugin configuration in the POM
+- Custom Maven plugin configuration
 - Multi-module POM aggregator/parent structure

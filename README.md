@@ -1,9 +1,9 @@
 # Transmute
 
 A domain-agnostic Java code migration framework. It provides the orchestration
-infrastructure — skill discovery, project inventory, planning, execution, and an
+infrastructure — migration discovery, project inventory, planning, execution, and an
 AI-assisted compile-fix loop — for migrating Java projects from one API or framework
-to another. All migration knowledge lives in separate skill modules; the core contains
+to another. All migration knowledge lives in separate migration modules; the core contains
 none.
 
 For the full design, rationale, and API reference see [PROJECT.md](PROJECT.md).
@@ -15,30 +15,57 @@ For the full design, rationale, and API reference see [PROJECT.md](PROJECT.md).
 ```
 1. Copy project to an output directory (original is untouched)
 2. Scan the project: build a ProjectInventory of all Java types, imports, annotations,
-   dependencies, and inter-module relationships
-3. Discover MigrationSkill classes on the classpath via ClassGraph
-4. Plan: evaluate skill trigger conditions against the inventory; resolve target files;
-   sort by @Skill(order=...) with @Skill(after=...) constraints
+   and inter-module relationships
+3. Discover migrations: Java implementations of Migration + markdown recipe/feature files
+   on the classpath
+4. Plan: evaluate trigger conditions against the inventory; resolve target files;
+   sort by order() with after() dependency constraints; derive execution scope
 5. Human approval gate — the plan is shown before anything is executed
-6. Execute skills in order; run PostcheckRunner on AI-backed skills
+6. Execute migrations in order:
+     • Java migrations — called once, iterate files themselves via ctx.inventory()
+     • Recipes (FILE scope) — one AI agent call per file, all matching recipes merged
+     • Features (PROJECT scope) — one AI agent call for the whole output directory
 7. Human review gate
-8. Compile-fix loop: classify errors (SKILL_GAP / COMPILE_ONLY / NOVEL), re-run
-   responsible skills, then use an AI agent for genuinely unknown problems
-9. Test-fix loop: run tests; use an AI agent for failures
-10. Generate a migration report (JSON + git-format patch in dry-run mode)
+8. Compile-fix loop: re-run AI agent for each failure batch (max 5 iterations)
+9. Test-fix loop: run tests; AI agent fixes failures (max 5 iterations)
+10. Generate a migration report (JSON)
 ```
 
-Skills are plain annotated Java classes. There is no registry, no configuration file,
-and no changes to the framework when a new skill is added:
+Two kinds of migration live side by side in the same pipeline:
+
+**Java migrations** — implement the `Migration` interface directly. Used for deterministic,
+AST-based transforms (e.g. OpenRewrite recipes).
 
 ```java
-@Skill(value = "Migrate JAX-RS annotations", order = 20)
-@Trigger(imports = {"javax.ws.rs.", "jakarta.ws.rs."})
-@Postchecks(forbidImports = {"javax.ws.rs.", "jakarta.ws.rs."})
-public class JaxrsAnnotationsSkill implements MigrationSkill {
+public class MyMigration implements Migration {
     @Override
-    public SkillResult apply(SkillContext ctx) throws Exception { ... }
+    public int order() { return 10; }
+
+    @Override
+    public boolean isTriggered(ProjectInventory inventory) {
+        return inventory.getJavaFiles().stream()
+            .anyMatch(f -> f.getImports().stream().anyMatch(i -> i.startsWith("javax.ws.rs.")));
+    }
+
+    @Override
+    public MigrationResult apply(MigrationContext ctx) throws Exception { ... }
 }
+```
+
+**Markdown migrations** — plain `.recipe.md` or `.feature.md` files loaded from the
+classpath. No Java code needed. The front-matter declares the trigger and order; the body
+is the AI system prompt.
+
+```markdown
+---
+name: My Recipe
+type: recipe          # recipe = FILE scope, feature = PROJECT scope
+order: 20
+triggers:
+  - imports: [com.example.OldApi]
+---
+
+Migrate usages of OldApi to NewApi. Replace ...
 ```
 
 ---
@@ -47,29 +74,27 @@ public class JaxrsAnnotationsSkill implements MigrationSkill {
 
 ```
 Transmute/
-  transmute-core/           Skill API, inventory, planner, compile analysis, tools
-  transmute-core-testkit/   Test helpers: SkillTestHarness, SourceTypeRegistryVerifier
-  transmute-agent/          Agentic workflow (LC4j), CLI entry point, prompt resources
-  transmute-dw-helidon/     Skills for Dropwizard 3 → Helidon 4 SE migrations
+  transmute-core/       All Java: inventory, migration API, planner, workflow,
+                        AI agents, CLI entry point, tool implementations
+  transmute-dw-helidon/ Pure markdown: recipes and features for Dropwizard 3 → Helidon 4 SE
 ```
 
-`transmute-core` and `transmute-core-testkit` have no dependency on any specific
-migration. Skill modules (like `transmute-dw-helidon`) depend only on
-`transmute-core`. The agent assembles the full pipeline at runtime by scanning
-whichever skill JARs are on the classpath.
+`transmute-dw-helidon` contains **zero Java** — only `.recipe.md` and `.feature.md` resource
+files. It has no Maven dependencies. Migration modules are assembled at runtime by placing
+the two JARs on the classpath together.
 
 ### Key packages in transmute-core
 
 | Package | Contents |
 |---------|----------|
 | `io.transmute.inventory` | `ProjectInventory`, `JavaFileInfo`, `JavaProjectVisitor` |
-| `io.transmute.skill` | `MigrationSkill`, `SkillContext`, `SkillResult`, `FileChange`, `Workspace` |
-| `io.transmute.skill.annotation` | `@Skill`, `@Trigger`, `@Postchecks`, `@Fallback`, `SkillScope` |
-| `io.transmute.skill.trigger` | `TriggerCondition`, `TriggerPredicates` |
-| `io.transmute.skill.postcheck` | `PostcheckRunner`, `PostcheckRule`, `PostcheckResult` |
-| `io.transmute.catalog` | `SkillDiscovery`, `MigrationPlanner`, `MigrationPlan`, `SourceTypeRegistry` |
-| `io.transmute.compile` | `CompileErrorParser`, `CompileErrorAnalyzer`, `CompileError` |
-| `io.transmute.tool` | `@Tool` implementations for AI agents (file I/O, compile, test) |
+| `io.transmute.migration` | `Migration`, `MigrationContext`, `MigrationResult`, `FileChange`, `Workspace`, `AiMigration`, `AiMigrationMetadata`, `MarkdownTrigger`, `MarkdownPostchecks`, `MigrationScope` |
+| `io.transmute.migration.postcheck` | `PostcheckRunner`, `PostcheckRule`, `PostcheckResult` |
+| `io.transmute.catalog` | `MigrationDiscovery`, `MigrationPlanner`, `MigrationPlan`, `MarkdownMigrationLoader`, `RecipeFrontMatter` |
+| `io.transmute.agent` | `TransmuteCli`, `TransmuteConfig`, `ModelFactory` |
+| `io.transmute.agent.workflow` | `MigrationWorkflow` |
+| `io.transmute.agent.agent` | `FixCompileErrorsAgent`, `FixTestFailuresAgent` |
+| `io.transmute.tool` | `@Tool` implementations for AI agents (file I/O, compile, test, copy) |
 
 ---
 
@@ -84,33 +109,51 @@ whichever skill JARs are on the classpath.
 mvn clean package -DskipTests
 ```
 
-All four modules (`transmute-core`, `transmute-core-testkit`, `transmute-agent`,
-`transmute-dw-helidon`) are built in a single reactor invocation.
+Both modules (`transmute-core`, `transmute-dw-helidon`) are built in a single reactor
+invocation.
 
 ---
 
 ## Running a migration
 
+The recommended way is to use the bundled scripts:
+
 **Linux / macOS**
 ```bash
-java -cp transmute-agent.jar:transmute-dw-helidon.jar \
-     io.transmute.agent.AgentRunner \
+# Defaults to C:/Users/dmitr/GitHub/dropwizard/dropwizard-example
+bash scripts/run.sh /path/to/my-dropwizard-app
+```
+
+**Windows (PowerShell)**
+```powershell
+.\scripts\run.ps1 -ProjectDir C:\path\to\my-dropwizard-app
+```
+
+Or invoke directly:
+
+**Linux / macOS**
+```bash
+CORE_JAR=transmute-core/target/transmute-core-1.0-SNAPSHOT.jar
+RECIPES_JAR=transmute-dw-helidon/target/transmute-dw-helidon-1.0-SNAPSHOT.jar
+
+java -cp "$CORE_JAR:$RECIPES_JAR" \
+     io.transmute.agent.TransmuteCli \
      --project-dir  /path/to/my-dropwizard-app \
-     --output-dir   /path/to/my-dropwizard-app-migrated \
-     --skills-package io.transmute.dw \
+     --output-dir   .tmp/transmuted \
      --model-provider openai \
-     --api-key $OPENAI_API_KEY
+     --api-key $OPENAI_API_KEY \
+     --auto-approve
 ```
 
 **Windows**
 ```bat
-java -cp transmute-agent.jar;transmute-dw-helidon.jar ^
-     io.transmute.agent.AgentRunner ^
+java -cp transmute-core.jar;transmute-dw-helidon.jar ^
+     io.transmute.agent.TransmuteCli ^
      --project-dir  C:\path\to\my-dropwizard-app ^
-     --output-dir   C:\path\to\my-dropwizard-app-migrated ^
-     --skills-package io.transmute.dw ^
+     --output-dir   .tmp\transmuted ^
      --model-provider openai ^
-     --api-key %OPENAI_API_KEY%
+     --api-key %OPENAI_API_KEY% ^
+     --auto-approve
 ```
 
 ### Key options
@@ -118,37 +161,85 @@ java -cp transmute-agent.jar;transmute-dw-helidon.jar ^
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--project-dir` | *(required)* | Source project to migrate |
-| `--output-dir` | `<project-dir>-transmuted` | Where the migrated copy is written |
-| `--skills-package` | *(required)* | Package prefix(es) to scan for skills |
-| `--profile` | *(none)* | Maven profile(s) to activate (repeatable) |
-| `--model-provider` | `oci-genai` | AI provider: `oci-genai`, `openai`, `ollama` |
+| `--output-dir` | `.tmp/transmuted` | Where the migrated copy is written |
+| `--model-provider` | `openai` | AI provider: `openai`, `oci-genai`, `ollama` |
 | `--model-id` | *(provider default)* | Model identifier |
+| `--api-key` | *(required for openai)* | API key |
+| `--base-url` | *(provider default)* | Override base URL (e.g. for local models) |
+| `--profile` | *(none)* | Maven profile(s) to activate during compile/test (repeatable) |
 | `--auto-approve` | false | Skip human approval/review gates |
-| `--dry-run` | false | Compute changes but do not write; produces a `.patch` file |
-| `--verbose` | false | Log every tool call made by AI agents |
-| `--allow-order-conflicts` | false | Warn instead of fail on `@Skill(after=...)` violations |
+| `--dry-run` | false | Compute changes but do not write files |
+| `--allow-order-conflicts` | false | Warn instead of fail on `after()` ordering violations |
 
 ### Environment variables
 
-`TRANSMUTE_MODEL_PROVIDER`, `TRANSMUTE_MODEL_ID`, `TRANSMUTE_API_KEY`,
-`TRANSMUTE_MODEL_BASE_URL`, `TRANSMUTE_MODEL_TIMEOUT_SECONDS`,
-`TRANSMUTE_AUTO_APPROVE`, `TRANSMUTE_VERBOSE`, `TRANSMUTE_DRY_RUN`,
-`TRANSMUTE_LOG_PROMPTS`
+| Variable | Description |
+|----------|-------------|
+| `TRANSMUTE_MODEL_PROVIDER` | `openai`, `oci-genai`, `ollama` |
+| `TRANSMUTE_MODEL_ID` | Model identifier |
+| `TRANSMUTE_API_KEY` | API key (required for `openai`) |
+| `TRANSMUTE_MODEL_BASE_URL` | Override base URL |
+| `TRANSMUTE_MODEL_TIMEOUT_SECONDS` | Request timeout in seconds |
+| `TRANSMUTE_VERBOSE` | `true`/`false` — log AI tool calls |
+| `TRANSMUTE_LOG_PROMPTS` | `true`/`false` — log full prompts to `logs/ai-prompts.jsonl` |
 
 ---
 
-## Writing a skill module
+## Writing a migration module
 
-1. Create a Maven project that depends on `transmute-core`.
-2. Implement `MigrationSkill`, annotate with `@Skill` and `@Trigger`.
-3. Implement `SourceTypeRegistry` so the compile-fix loop can classify errors.
-4. Add a test using `SkillTestHarness` and `SourceTypeRegistryVerifier` (from `transmute-core-testkit`).
-5. Place the JAR on the classpath alongside `transmute-agent.jar` and pass
-   `--skills-package your.package` at the command line.
+A migration module is a Maven project with no dependencies other than `transmute-core`.
+It contributes migrations in two ways — they can be mixed freely:
 
-See `transmute-dw-helidon/` for a worked example covering POM migration, JAX-RS
-annotation rewriting, Dropwizard orphan handling, and HealthCheck migration.
+### Option A — Markdown migrations (preferred)
 
-See [PROJECT.md](PROJECT.md) for the full design: skill annotations, trigger
-predicates, postcheck rules, AI-backed skill patterns, compile error classification,
-and all architectural decisions.
+Place `.recipe.md` or `.feature.md` files under `src/main/resources/recipes/` or
+`src/main/resources/features/`. No Java code required.
+
+**Front-matter fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Human-readable migration name |
+| `type` | yes | `recipe` (FILE scope) or `feature` (PROJECT scope) |
+| `order` | no | Execution order, default 50 |
+| `after` | no | List of migration names this must run after |
+| `triggers` | no | List of trigger conditions (omit → always triggered) |
+| `postchecks` | no | `forbidImports`, `requireImports` post-execution assertions |
+
+**Trigger types:**
+
+```yaml
+triggers:
+  - imports: [com.example.OldClass]       # file imports any of these
+    annotations: [com.example.OldAnnot]   # file uses any of these annotations
+    superTypes: [com.example.OldBase]     # file extends/implements any of these
+  - files: [pom.xml, build.gradle]        # project root contains any of these files
+```
+
+Scope is derived automatically: a migration is FILE-scoped if any trigger uses
+`imports`, `annotations`, or `superTypes`; it is PROJECT-scoped if triggers use only
+`files` (or if there are no triggers).
+
+### Option B — Java migrations
+
+Implement `io.transmute.migration.Migration`:
+
+```java
+public class MyMigration implements Migration {
+    @Override public int order() { return 10; }
+    @Override public List<String> after() { return List.of("Other Migration"); }
+    @Override public boolean isTriggered(ProjectInventory inventory) { return true; }
+    @Override public MigrationResult apply(MigrationContext ctx) throws Exception { ... }
+}
+```
+
+`MigrationDiscovery` finds all `Migration` implementations on the classpath automatically
+via ClassGraph — no registration required.
+
+---
+
+See [transmute-dw-helidon/README.md](transmute-dw-helidon/README.md) for a worked example
+covering build system migration, JAX-RS annotation rewriting, and HealthCheck migration.
+
+See [PROJECT.md](PROJECT.md) for the full design: trigger system, scope derivation,
+AI prompt composition, postcheck rules, and all architectural decisions.
