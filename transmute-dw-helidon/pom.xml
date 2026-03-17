@@ -11,46 +11,7 @@
     </parent>
 
     <artifactId>transmute-dw-helidon</artifactId>
-    <name>Transmute :: Dropwizard to Helidon Skills</name>
-    <description>MigrationSkill implementations for Dropwizard 3 to Helidon 4 SE migrations</description>
+    <name>Transmute :: Dropwizard to Helidon Recipes</name>
+    <description>Recipes and features for Dropwizard 3 to Helidon 4 SE migrations</description>
 
-    <dependencies>
-        <dependency>
-            <groupId>io.transmute</groupId>
-            <artifactId>transmute-core</artifactId>
-        </dependency>
-
-        <!-- OpenRewrite for AST-based Java transformations -->
-        <dependency>
-            <groupId>org.openrewrite</groupId>
-            <artifactId>rewrite-java</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.openrewrite</groupId>
-            <artifactId>rewrite-maven</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.openrewrite</groupId>
-            <artifactId>rewrite-java-21</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.openrewrite</groupId>
-            <artifactId>rewrite-java-25</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- Testing -->
-        <dependency>
-            <groupId>io.transmute</groupId>
-            <artifactId>transmute-core-testkit</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
 </project>

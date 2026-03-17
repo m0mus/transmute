@@ -20,7 +20,6 @@ public class MigrationTools {
     public List<Object> all() {
         return List.of(
                 new FileOperationsTool(outputDir),
-                new ValidationTool(),
                 new CompileProjectTool(activeProfiles),
                 new RunTestsTool(activeProfiles),
                 new CopyProjectTool()

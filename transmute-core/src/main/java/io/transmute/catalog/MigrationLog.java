@@ -1,6 +1,6 @@
 package io.transmute.catalog;
 
-import io.transmute.skill.MigrationSkill;
+import io.transmute.migration.Migration;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -15,16 +15,16 @@ public class MigrationLog {
 
     private final List<MigrationLogEntry> entries = new CopyOnWriteArrayList<>();
 
-    public void recordTargeted(Class<? extends MigrationSkill> skill, String file) {
-        entries.add(new MigrationLogEntry(skill, file, LogStatus.TARGETED));
+    public void recordTargeted(Class<? extends Migration> migration, String file) {
+        entries.add(new MigrationLogEntry(migration, file, LogStatus.TARGETED));
     }
 
-    public void recordAttempted(Class<? extends MigrationSkill> skill, String file) {
-        entries.add(new MigrationLogEntry(skill, file, LogStatus.ATTEMPTED));
+    public void recordAttempted(Class<? extends Migration> migration, String file) {
+        entries.add(new MigrationLogEntry(migration, file, LogStatus.ATTEMPTED));
     }
 
-    public void recordChanged(Class<? extends MigrationSkill> skill, String file) {
-        entries.add(new MigrationLogEntry(skill, file, LogStatus.CHANGED));
+    public void recordChanged(Class<? extends Migration> migration, String file) {
+        entries.add(new MigrationLogEntry(migration, file, LogStatus.CHANGED));
     }
 
     /**

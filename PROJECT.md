@@ -202,7 +202,7 @@ io.migration.skills.dw/
   trigger/
     (TriggerCondition implementations for complex DW patterns)
 src/main/resources/
-  prompts/                           AI skill prompts (DW -> Helidon specific)
+  prompts/                           AI agent prompts (DW -> Helidon specific)
   examples/                          Helidon 4 SE code examples for few-shot context
 src/test/resources/
   annotation/before/
@@ -806,16 +806,16 @@ not the framework:
 
 ```
 dw-helidon-skills/src/main/resources/
-  prompts/             AI skill prompts specific to this migration
+  prompts/             AI agent prompts specific to this migration
   examples/            target framework code snippets for few-shot context
 ```
 
-| | AI Skill | AI Agent (compile / test fix) |
+| | Recipe / Feature | AI Agent (compile / test fix) |
 |---|---|---|
 | Activation | Inventory trigger -- known pattern | Compile errors -- reactive |
 | Scope | One file at a time, focused prompt | Multiple files, open-ended |
-| LLM interaction | Multi-turn call with self-correction | Tool-calling agentic loop |
-| Retries | 3 attempts with feedback | Progress-based loop until unstuck |
+| LLM interaction | Single call with combined prompt | Tool-calling agentic loop |
+| Retries | Post-compile fix loop handles residuals | Progress-based loop until unstuck |
 
 ---
 
@@ -1091,7 +1091,7 @@ Migration run
 - `MigrationSkill` interface + all annotations (`@Skill`, `@Trigger`, `@Postchecks`, `@Fallback`)
 - `SkillFactory`, `SkillConfig` -- optional constructor injection; `SkillConfig` carries AI retry thresholds
 - `Workspace` -- I/O path helpers (`outputDir`, `sourceDir`, `sourceFileFor`, `isDryRun`)
-- `AiRetryGuard` -- runaway-rewrite guard for AI skill retry loops
+- `AiRetryGuard` -- runaway-rewrite guard for AI agent retry loops
 - `ProjectInventory`, `JavaFileInfo`, `DependencyInfo`, `JavaProjectVisitor`
 - `TriggerCondition`, `TriggerPredicates`
 - `SourceTypeRegistry` interface

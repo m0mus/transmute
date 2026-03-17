@@ -11,8 +11,6 @@
 
     <modules>
         <module>transmute-core</module>
-        <module>transmute-core-testkit</module>
-        <module>transmute-agent</module>
         <module>transmute-dw-helidon</module>
     </modules>
 
@@ -33,12 +31,6 @@
                 <artifactId>transmute-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <dependency>
-                <groupId>io.transmute</groupId>
-                <artifactId>transmute-core-testkit</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
             <!-- OpenRewrite -->
             <dependency>
                 <groupId>org.openrewrite</groupId>

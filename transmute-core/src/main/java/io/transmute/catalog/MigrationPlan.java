@@ -1,28 +1,28 @@
 package io.transmute.catalog;
 
-import io.transmute.skill.MigrationSkill;
+import io.transmute.migration.Migration;
 
 import java.util.List;
 
 /**
- * An ordered list of skill executions produced by {@link MigrationPlanner}.
+ * An ordered list of migration executions produced by {@link MigrationPlanner}.
  */
-public record MigrationPlan(List<SkillExecutionEntry> entries) {
+public record MigrationPlan(List<MigrationExecutionEntry> entries) {
 
     public MigrationPlan {
         entries = List.copyOf(entries);
     }
 
     /**
-     * One entry in the plan: the skill to run, the files it targets, and metadata.
+     * One entry in the plan: the migration to run, the files it targets, and metadata.
      */
-    public record SkillExecutionEntry(
-            MigrationSkill skill,
+    public record MigrationExecutionEntry(
+            Migration migration,
             List<String> targetFiles,
-            SkillConfidence confidence,
+            MigrationConfidence confidence,
             boolean aiInvolved
     ) {
-        public SkillExecutionEntry {
+        public MigrationExecutionEntry {
             targetFiles = List.copyOf(targetFiles);
         }
     }
