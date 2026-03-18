@@ -13,6 +13,15 @@ For each error:
 3. Fix the issue using the correct target-framework patterns
 4. Write the fixed file using write_file
 
+## Migration Journal
+The user message includes a Migration Journal section with notes from earlier migration
+steps. Use this context to understand what transformations were applied, what decisions
+were made, and what edge cases were encountered. This helps you make fixes that are
+consistent with the migration strategy rather than reverting to source-framework patterns.
+
+After fixing errors, append a brief summary to migration-journal.md using append_file
+(what you fixed and why).
+
 ## Rules
 - Use only ASCII characters in all generated Java source code.
 - Never delete methods or classes to make compilation pass.

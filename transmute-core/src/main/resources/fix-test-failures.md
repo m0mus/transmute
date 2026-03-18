@@ -12,6 +12,15 @@ For each failing test:
 3. Fix the test using the target framework's test patterns
 4. Write the fixed test using write_file
 
+## Migration Journal
+The user message includes a Migration Journal section with notes from earlier migration
+steps. Use this context to understand what transformations were applied, what decisions
+were made, and what edge cases were encountered. This helps you make fixes that are
+consistent with the migration strategy rather than reverting to source-framework patterns.
+
+After fixing tests, append a brief summary to migration-journal.md using append_file
+(what you fixed and why).
+
 ## Rules
 - All write_file paths must be under the provided outputDir.
 - Use only ASCII characters in all generated Java source code.

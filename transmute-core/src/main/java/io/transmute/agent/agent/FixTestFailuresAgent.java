@@ -15,10 +15,14 @@ public interface FixTestFailuresAgent {
         Fix test failures in the migrated project at {{outputDir}}.
         Test output: {{testOutput}}
 
+        ## Migration Journal (context from earlier migration steps)
+        {{journalContext}}
+
         Use outputDir-relative paths only (no absolute paths).
         Read the failing test files and the code they test, fix the issues,
         and write the corrected files.
         """)
     String fix(@V("outputDir") String outputDir,
-               @V("testOutput") String testOutput);
+               @V("testOutput") String testOutput,
+               @V("journalContext") String journalContext);
 }

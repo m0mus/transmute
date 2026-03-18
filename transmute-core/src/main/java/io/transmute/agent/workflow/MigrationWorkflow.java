@@ -56,6 +56,7 @@ public class MigrationWorkflow {
 
     private static final int MAX_FIX_ITERATIONS = 5;
     private static final int TOTAL_STEPS = 10;
+    private static final String JOURNAL_FILE = "migration-journal.md";
 
     private final TransmuteConfig config;
     private final ObjectMapper json = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
@@ -234,7 +235,7 @@ public class MigrationWorkflow {
                 throw new RuntimeException("Compile failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking compile-fix agent…" + Con.RESET);
-            buildCompileFixAgent().fix(config.outputDir(), result.errors());
+            buildCompileFixAgent().fix(config.outputDir(), result.errors(), readJournal());
         }
         Con.rule();
     }
@@ -255,7 +256,7 @@ public class MigrationWorkflow {
                 throw new RuntimeException("Tests failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking test-fix agent…" + Con.RESET);
-            buildTestFixAgent().fix(config.outputDir(), result.output());
+            buildTestFixAgent().fix(config.outputDir(), result.output(), readJournal());
         }
         Con.rule();
     }
@@ -320,7 +321,9 @@ public class MigrationWorkflow {
                     .systemMessageProvider(id -> aiMigration.systemPromptSection())
                     .build()
                     .apply("Apply the migration to the project at: " + workspace.outputDir()
-                            + "\nUse paths relative to the output directory.");
+                            + "\nUse paths relative to the output directory."
+                            + "\nAfter completing changes, append a summary to " + JOURNAL_FILE
+                            + " using append_file (what you changed, key decisions, edge cases).");
             return true;
         } catch (Exception e) {
             Con.error("Agent failed for project migration " + aiMigration.skillName() + ": " + e.getMessage());
@@ -407,6 +410,15 @@ public class MigrationWorkflow {
                 You are an expert Java developer executing a framework migration.
                 Apply ALL sections below. Each section declares what it owns and what transformations to apply.
                 Do not modify anything not covered by a section below.
+
+                ## Migration Journal
+                After completing your changes, append a brief summary line to \
+                """)
+          .append(JOURNAL_FILE)
+          .append("""
+                 using the append_file tool.
+                Include: what migration(s) you applied, which file you changed, and any \
+                decisions or edge cases worth noting for subsequent migrations or fix agents.
                 """);
 
         for (var migration : aiMigrations) {
@@ -534,5 +546,15 @@ public class MigrationWorkflow {
         if (lines.length > limit) {
             System.out.println(Con.DIM + "    … " + (lines.length - limit) + " more lines" + Con.RESET);
         }
+    }
+
+    private String readJournal() {
+        try {
+            var journalPath = Path.of(config.outputDir()).resolve(JOURNAL_FILE);
+            if (Files.exists(journalPath)) {
+                return Files.readString(journalPath);
+            }
+        } catch (Exception ignored) {}
+        return "";
     }
 }

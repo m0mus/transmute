@@ -61,13 +61,16 @@ TransmuteCli (entry point)
         ├── [6]  ExecuteMigrations
         │         ├── FILE-scoped recipes  → one agent call per file
         │         │     (all recipes targeting the same file merged into one prompt)
-        │         └── PROJECT-scoped migrations → one agent call for the whole output dir
-        │                                      (can modify multiple files)
+        │         ├── PROJECT-scoped migrations → one agent call for the whole output dir
+        │         │                              (can modify multiple files)
+        │         └── All agents append to migration-journal.md (cross-recipe context)
         │
         ├── [7]  ReviewGate            human gate (skipped if --auto-approve)
         │
         ├── [8]  CompileFixLoop        mvn compile → FixCompileErrorsAgent (max 5 iterations)
+        │                              (reads migration-journal.md for context)
         ├── [9]  TestFixLoop           mvn test    → FixTestFailuresAgent  (max 5 iterations)
+        │                              (reads migration-journal.md for context)
         └── [10] GenerateReport        writes migration-report.json
 ```
 
@@ -207,7 +210,7 @@ io.transmute.inventory/
   JavaProjectVisitor.java     OpenRewrite visitor that populates ProjectInventory
 
 io.transmute.tool/
-  FileOperationsTool.java     @Tool: read, write, list files (used by AI agents)
+  FileOperationsTool.java     @Tool: read, write, append, list files (used by AI agents)
   CompileProjectTool.java     @Tool: mvn compile; returns success + error text
   RunTestsTool.java           @Tool: mvn test; returns success + output text
   CopyProjectTool.java        Copies source dir to output dir
@@ -270,7 +273,33 @@ pipeline — they flag files that may need manual review.
 
 ---
 
-## 11. Adding a New Migration Module
+## 11. Migration Journal
+
+The Migration Journal (`migration-journal.md`) is an append-only file in the output
+directory that provides cross-recipe and cross-agent context throughout the pipeline.
+
+**How it works:**
+
+1. Each recipe/feature agent appends a summary line after completing its changes —
+   what it migrated, which file(s) it changed, and any decisions or edge cases.
+2. The compile-fix and test-fix agents receive the full journal as context in their
+   user message, helping them understand what transformations were applied and why.
+3. Fix agents also append their own entries after resolving errors.
+
+**Why it matters:**
+
+Without shared context, fix agents may revert to source-framework patterns when fixing
+compile errors because they don't know what the migration intended. The journal bridges
+this gap — it tells the fix agent "this class was migrated from X to Y, these imports
+were intentionally replaced" so fixes stay consistent with the migration strategy.
+
+The journal is written via the `append_file` tool on `FileOperationsTool`, which
+creates the file on first use and appends subsequent entries.
+
+---
+
+## 12. Adding a New Migration Module
+
 
 1. Create a Maven project with no dependencies.
 2. Create `src/main/resources/recipes/` and/or `src/main/resources/features/`.

@@ -24,9 +24,12 @@ For the full design, rationale, and API reference see [PROJECT.md](PROJECT.md).
      • Recipes (FILE scope) — one AI agent call per file, all matching recipes merged
      • Project-scoped migrations — one AI agent call for the whole output directory
        (can modify multiple files)
+     • Each agent appends to a migration journal for cross-recipe context
 7. Human review gate
 8. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
+     — reads migration journal for context on what was changed and why
 9. Test-fix loop: AI agent fixes test failures (max 5 iterations)
+     — reads migration journal for context on what was changed and why
 10. Generate a migration report (JSON)
 ```
 

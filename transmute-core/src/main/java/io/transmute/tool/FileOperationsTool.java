@@ -6,6 +6,7 @@ import dev.langchain4j.agent.tool.Tool;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -81,6 +82,23 @@ public class FileOperationsTool {
         }
     }
 
+    @Tool("Append a line to a file in the output directory. Creates the file if it does not exist. " +
+          "Use this for the migration journal.")
+    public String appendFile(
+            @P("Path to the file (relative to outputDir)") String filePath,
+            @P("The text to append (will be followed by a newline)") String text) {
+        try {
+            var resolved = resolveSafePath(filePath, "appending to");
+            if (resolved == null) return "Error appending to file: invalid path";
+            Files.createDirectories(resolved.getParent());
+            Files.writeString(resolved, text + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            ToolLog.log("append_file " + filePath);
+            return "Appended to " + filePath;
+        } catch (IOException e) {
+            return "Error appending to file: " + e.getMessage();
+        }
+    }
+
     @Tool("List all .java files in a project directory under outputDir, recursively.")
     public String listJavaFiles(
             @P("Path to the project directory (relative to outputDir)") String projectDir) {
@@ -109,6 +127,22 @@ public class FileOperationsTool {
         } catch (IOException e) {
             return "Error listing files: " + e.getMessage();
         }
+    }
+
+    private Path resolveSafePath(String filePath, String operation) {
+        if (outputDir == null || outputDir.isBlank()) {
+            return null;
+        }
+        var outRoot = Path.of(outputDir).toAbsolutePath().normalize();
+        var path = Path.of(filePath);
+        if (path.isAbsolute()) {
+            return null;
+        }
+        path = outRoot.resolve(path).normalize();
+        if (!path.toAbsolutePath().normalize().startsWith(outRoot)) {
+            return null;
+        }
+        return path;
     }
 
     private boolean isUnderDirectory(Path baseDir, Path candidate) {
