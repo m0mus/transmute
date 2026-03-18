@@ -3,10 +3,6 @@ name: Metrics Migration
 type: recipe
 triggers:
   - imports: [com.codahale.metrics]
-    annotations: [com.codahale.metrics.annotation.Timed,
-                  com.codahale.metrics.annotation.Metered,
-                  com.codahale.metrics.annotation.Counted,
-                  com.codahale.metrics.annotation.ExceptionMetered]
   - imports: [io.dropwizard.metrics]
 order: 15
 postchecks:

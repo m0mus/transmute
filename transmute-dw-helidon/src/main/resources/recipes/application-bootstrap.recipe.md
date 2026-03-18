@@ -3,20 +3,12 @@ name: Application Bootstrap
 type: recipe
 order: 2
 triggers:
-  - files: [pom.xml]
+  - superTypes: [io.dropwizard.Application, io.dropwizard.core.Application]
 ---
 
-Migrate the Dropwizard `Application<T>` class to a Helidon 4 SE `Main` class.
+This file is the Dropwizard `Application<T>` class. Rewrite it as a Helidon 4 SE `Main` class.
 
-## Step 1 — Find the Application class
-
-Search all `.java` files in the project for a class that:
-- Extends `Application<T>` (any generic type parameter), OR
-- Extends `io.dropwizard.Application` or `io.dropwizard.core.Application`
-
-If no such class is found, make no changes.
-
-## Step 2 — Rewrite as Helidon SE Main
+## Step 1 — Rewrite as Helidon SE Main
 
 Replace the entire class body with the Helidon 4 SE `Main` pattern:
 
@@ -68,7 +60,7 @@ Rules:
   - `io.helidon.webserver.http.HttpRouting`
 - Remove all Dropwizard imports (`io.dropwizard.*`).
 
-## Step 3 — Handle initialize() bundles
+## Step 2 — Handle initialize() bundles
 
 If the original `initialize()` method registered bundles via `bootstrap.addBundle(...)`, add a
 TODO comment inside the `routing()` method:
@@ -77,7 +69,7 @@ TODO comment inside the `routing()` method:
 // TODO: review bundle migrations — bundle registrations from initialize() were removed
 ```
 
-## Step 4 — Handle run() registrations
+## Step 3 — Handle run() registrations
 
 For each `environment.jersey().register(new XyzResource())` in the original `run()`:
 - If `XyzResource` has been (or will be) migrated to use `@Http.Endpoint` + `@Service.Singleton`,
@@ -95,7 +87,7 @@ For each `environment.lifecycle().manage(new XyzManaged())`:
   // TODO: XyzManaged lifecycle — ensure @Service.PostConstruct/@Service.PreDestroy are set
   ```
 
-## Step 5 — Create application.yaml if absent
+## Step 4 — Create application.yaml if absent
 
 If no `application.yaml` (or `application.yml`) file exists under `src/main/resources/`, create
 `src/main/resources/application.yaml` with:
@@ -106,7 +98,7 @@ server:
   host: 0.0.0.0
 ```
 
-## Step 6 — Delete old Dropwizard YAML config
+## Step 5 — Delete old Dropwizard YAML config
 
 If a Dropwizard YAML configuration file exists at the project root (commonly named
 `config.yml`, `dev.yml`, or matching the pattern `*-config.yml`), delete it.

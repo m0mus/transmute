@@ -10,13 +10,11 @@ Migrate the project build system from Dropwizard 3 to Helidon 4 SE declarative.
 
 ## Step 1 — Detect the build file
 
-Check the output directory root for a supported build file in this order:
+The project contains one or more of the following build files. Use the first match in priority order:
 1. `pom.xml` — Maven
 2. `build.gradle.kts` — Gradle (Kotlin DSL)
 3. `build.gradle` — Gradle (Groovy DSL)
 4. `build.xml` — Ant
-
-Read whichever file is found. If none is found, make no changes.
 
 ## Step 2 — Extract project identity
 
