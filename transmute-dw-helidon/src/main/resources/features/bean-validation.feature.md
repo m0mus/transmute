@@ -3,103 +3,111 @@ name: Bean Validation Migration
 type: feature
 triggers:
   - imports: [javax.validation]
+  - imports: [jakarta.validation]
   - imports: [org.hibernate.validator.constraints]
   - imports: [io.dropwizard.validation]
 postchecks:
   forbidImports:
     - javax.validation
+    - jakarta.validation
+    - org.hibernate.validator.constraints
     - io.dropwizard.validation
 ---
 
-This file uses Bean Validation annotations from the `javax.validation` namespace (Java EE 8)
-or Dropwizard-specific validators. Helidon 4 SE uses the Jakarta EE 10 namespace
-(`jakarta.validation`). The annotation names are identical — only the import package changes.
+This file uses Bean Validation annotations (`javax.validation` or `jakarta.validation`).
+Helidon 4 SE has its own declarative validation API in `io.helidon.validation.Validation`
+with a different annotation structure. Migrate all validation annotations to the Helidon
+equivalents.
 
-## javax.validation → jakarta.validation
+## Step 1 — Add @Validation.Validated to the class
 
-Replace every import whose package starts with `javax.validation` with the equivalent
-`jakarta.validation` import:
+Add `@Validation.Validated` to every class that has validation annotations on its fields,
+methods, or parameters. This triggers Helidon's annotation-processor-generated interception.
 
 ```java
 // Before
-import javax.validation.Valid;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.NotEmpty;
-import javax.validation.constraints.Size;
-import javax.validation.constraints.Min;
-import javax.validation.constraints.Max;
-import javax.validation.constraints.Pattern;
-import javax.validation.constraints.Email;
-import javax.validation.constraints.Positive;
-import javax.validation.constraints.PositiveOrZero;
-import javax.validation.constraints.Negative;
-import javax.validation.constraints.NegativeOrZero;
-import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.AssertFalse;
-import javax.validation.constraints.Future;
-import javax.validation.constraints.Past;
-import javax.validation.constraints.Digits;
-import javax.validation.constraints.DecimalMin;
-import javax.validation.constraints.DecimalMax;
-import javax.validation.ConstraintViolation;
-import javax.validation.Validator;
-import javax.validation.ValidatorFactory;
-import javax.validation.Validation;
+public class PersonResource {
+
+// After
+@Validation.Validated
+public class PersonResource {
 ```
 
+## Step 2 — Replace constraint annotations
+
+Replace every Bean Validation annotation with the Helidon equivalent:
+
+| Remove | Add |
+|--------|-----|
+| `@NotNull` | `@Validation.NotNull` |
+| `@Null` | `@Validation.Null` |
+| `@Valid` | `@Validation.Valid` |
+| `@NotEmpty` (String) | `@Validation.String.NotEmpty` |
+| `@NotBlank` | `@Validation.String.NotBlank` |
+| `@Size(min=N, max=M)` on String | `@Validation.String.Length(min=N, max=M)` |
+| `@Size(min=N, max=M)` on Collection/Map | `@Validation.Collection.Size(min=N, max=M)` |
+| `@Pattern(regexp="...")` | `@Validation.String.Pattern(pattern="...")` |
+| `@Email` | `@Validation.Email` |
+| `@Min(N)` on int/Integer | `@Validation.Integer.Min(N)` |
+| `@Max(N)` on int/Integer | `@Validation.Integer.Max(N)` |
+| `@Min(N)` on long/Long | `@Validation.Long.Min(N)` |
+| `@Max(N)` on long/Long | `@Validation.Long.Max(N)` |
+| `@Min(N)` on other number | `@Validation.Number.Min(N)` |
+| `@Max(N)` on other number | `@Validation.Number.Max(N)` |
+| `@Positive` | `@Validation.Number.Positive` |
+| `@PositiveOrZero` | `@Validation.Number.PositiveOrZero` |
+| `@Negative` | `@Validation.Number.Negative` |
+| `@NegativeOrZero` | `@Validation.Number.NegativeOrZero` |
+| `@Digits(integer=N, fraction=M)` | `@Validation.Number.Digits(integer=N, fraction=M)` |
+| `@DecimalMin` / `@DecimalMax` | `@Validation.Number.Min` / `@Validation.Number.Max` |
+| `@AssertTrue` | `@Validation.Boolean.True` |
+| `@AssertFalse` | `@Validation.Boolean.False` |
+| `@Future` on Calendar | `@Validation.Calendar.Future` |
+| `@FutureOrPresent` on Calendar | `@Validation.Calendar.FutureOrPresent` |
+| `@Past` on Calendar | `@Validation.Calendar.Past` |
+| `@PastOrPresent` on Calendar | `@Validation.Calendar.PastOrPresent` |
+
+For any annotation not listed above, remove it and add:
 ```java
-// After — identical names, only the package prefix changes
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.NotEmpty;
-// ... etc
+// DW_MIGRATION_TODO[manual]: was @XYZ — find Helidon Validation equivalent or write custom constraint
 ```
 
-**Rule:** Replace every `javax.validation.` prefix in import statements with `jakarta.validation.`.
-Do not change annotation usage in the code — `@Valid`, `@NotNull`, `@Size(min=1)`, etc. stay unchanged.
+## Step 3 — Dropwizard-specific validators
 
-## org.hibernate.validator.constraints
+| Remove | Add |
+|--------|-----|
+| `@io.dropwizard.validation.PortRange` | `@Validation.Integer.Min(1)` + `@Validation.Integer.Max(65535)` |
+| `@io.dropwizard.validation.Validated` | `@Validation.Valid` |
+| All other `io.dropwizard.validation.*` | Remove + `// DW_MIGRATION_TODO[manual]: was DW validator — find Helidon Validation equivalent` |
 
-Hibernate Validator constraints (`@NotBlank`, `@URL`, `@CreditCardNumber`, `@Length`, etc.)
-are fully compatible with Jakarta Validator and do **not** need to be changed.
-Leave `org.hibernate.validator.constraints.*` imports as-is.
+## Step 4 — Update imports
 
-One exception — `@NotEmpty` was moved to the Jakarta standard:
-- If the import is `org.hibernate.validator.constraints.NotEmpty`, replace with
-  `jakarta.validation.constraints.NotEmpty`.
+Remove all of:
+- `javax.validation.*`
+- `jakarta.validation.*`
+- `org.hibernate.validator.constraints.*`
+- `io.dropwizard.validation.*`
 
-## io.dropwizard.validation
+Add a single import:
+```java
+import io.helidon.validation.Validation;
+```
 
-Dropwizard ships additional custom validators with no direct Jakarta equivalent.
-For each one found, remove the import and add a `DW_MIGRATION_TODO` at the usage site:
+## Step 5 — Note on pom.xml
 
-| Dropwizard annotation | Action |
-|-----------------------|--------|
-| `@ValidationMethod` | Remove from method; add: `// DW_MIGRATION_TODO[manual]: was @ValidationMethod — implement ConstraintValidator<A,T>` |
-| `@MinDuration` / `@MaxDuration` | Remove annotation; add: `// DW_MIGRATION_TODO[manual]: was @MinDuration/@MaxDuration — validate Duration manually or write custom ConstraintValidator` |
-| `@MinSize` / `@MaxSize` | Replace with `@Size(min=N)` / `@Size(max=N)` from `jakarta.validation.constraints` if values are constants; otherwise add TODO |
-| `@OneOf` | Remove annotation; add: `// DW_MIGRATION_TODO[manual]: was @OneOf — use @Pattern or write custom ConstraintValidator` |
-| `@PortRange` | Replace with `@Min(1) @Max(65535)` from `jakarta.validation.constraints`; remove original |
-| `@Validated` | Replace with `jakarta.validation.Valid` |
-| Any other `io.dropwizard.validation.*` | Remove import; add: `// DW_MIGRATION_TODO[manual]: was io.dropwizard.validation.X — find Jakarta equivalent or write custom ConstraintValidator` |
-
-## Imports
-
-Remove:
-- All `javax.validation.*` imports
-- All `io.dropwizard.validation.*` imports
-
-Add:
-- `jakarta.validation.*` equivalents for every `javax.validation.*` import that was present
-- For `@Min` / `@Max` replacements: `jakarta.validation.constraints.Min` / `jakarta.validation.constraints.Max`
-
-Do NOT change:
-- `org.hibernate.validator.constraints.*` (except the `NotEmpty` case above)
-- Any annotation usage in the code body — only imports change
+The `helidon-validation` module must be on the classpath. The Build File Migration recipe
+adds it as part of the Helidon BOM. If it is missing, add:
+```xml
+<dependency>
+    <groupId>io.helidon.validation</groupId>
+    <artifactId>helidon-validation</artifactId>
+</dependency>
+```
+Do NOT modify `pom.xml` in this step — that is handled by the Build File Migration recipe.
 
 ## DO NOT touch
 
 Do NOT modify anything related to:
-- `@JsonProperty`, `@JsonIgnore`, Jackson annotations — handled by other recipes.
 - JAX-RS / `@Http.*` annotations — handled by the REST Resource recipe.
 - `@Inject`, `@Singleton` — handled by the Injection Migration feature.
+- `@JsonProperty`, `@JsonIgnore` — handled by other recipes.

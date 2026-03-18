@@ -96,7 +96,8 @@ class RecipeMigrationIT {
 
         assertTrue(failures.isEmpty(), "Postcheck failures: " + failures);
         assertFalse(output.contains("import javax.validation"), "javax.validation import should be removed");
-        assertTrue(output.contains("import jakarta.validation"), "jakarta.validation import should be added");
+        assertTrue(output.contains("import io.helidon.validation.Validation"), "Helidon Validation import should be added");
+        assertTrue(output.contains("@Validation."), "Helidon @Validation.* annotations should be used");
     }
 
     private String fixture(String name) throws Exception {

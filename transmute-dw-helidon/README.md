@@ -25,7 +25,7 @@ front-matter; scope is derived automatically by the planner.
 | 12 | `recipes/http-client.recipe.md` | recipe | FILE | `JerseyClientBuilder`/`HttpClientBuilder` → WebClient TODOs |
 | 15 | `recipes/metrics-migration.recipe.md` | recipe | FILE | Codahale metrics → Micrometer |
 | 20 | `recipes/health-check.recipe.md` | recipe | FILE | DW `HealthCheck` → Helidon `HealthCheck` |
-| 50 | `features/bean-validation.feature.md` | feature | FILE | `javax.validation.*` → `jakarta.validation.*`; DW validators → TODOs |
+| 50 | `features/bean-validation.feature.md` | feature | FILE | `javax.validation.*` → Helidon `@Validation.*`; DW validators → TODOs |
 | 50 | `features/injection-migration.feature.md` | feature | FILE | Guice/HK2/`javax.inject` → Service Registry |
 | 50 | `features/unit-of-work.feature.md` | feature | FILE | `@UnitOfWork`/`AbstractDAO` → DbClient TODOs |
 | 50 | `features/security-auth.feature.md` | feature | FILE | `@Auth`/`Authenticator`/`Authorizer` → Security TODOs |
@@ -289,19 +289,34 @@ or `io.dropwizard.validation`. Postchecks: forbids `javax.validation` and
 Helidon 4 SE uses Jakarta EE 10, which moved the `javax.*` namespace to `jakarta.*`.
 Annotation names are unchanged — only import packages change.
 
+Helidon 4 SE has its own declarative validation API — not `jakarta.validation`. All
+Bean Validation annotations are replaced with `@Validation.*` nested annotations from
+`io.helidon.validation.Validation`. The class is annotated with `@Validation.Validated`
+to trigger Helidon's build-time code generation.
+
 | Before | After |
 |--------|-------|
-| `javax.validation.Valid` | `jakarta.validation.Valid` |
-| `javax.validation.constraints.*` | `jakarta.validation.constraints.*` |
-| `javax.validation.Validator` | `jakarta.validation.Validator` |
-| `org.hibernate.validator.constraints.NotEmpty` | `jakarta.validation.constraints.NotEmpty` |
-| `org.hibernate.validator.constraints.*` (other) | unchanged (hibernate-validator works with jakarta) |
-| `@io.dropwizard.validation.PortRange` | `@Min(1) @Max(65535)` |
-| `@io.dropwizard.validation.MinSize` / `@MaxSize` | `@Size(min=N)` / `@Size(max=N)` |
-| `@io.dropwizard.validation.Validated` | `@jakarta.validation.Valid` |
-| `@ValidationMethod`, `@MinDuration`, `@MaxDuration`, `@OneOf` | Removed + `DW_MIGRATION_TODO` comment |
+| `@NotNull` | `@Validation.NotNull` |
+| `@Valid` | `@Validation.Valid` |
+| `@NotEmpty` (String) | `@Validation.String.NotEmpty` |
+| `@NotBlank` | `@Validation.String.NotBlank` |
+| `@Size` on String | `@Validation.String.Length` |
+| `@Size` on Collection | `@Validation.Collection.Size` |
+| `@Pattern` | `@Validation.String.Pattern` |
+| `@Email` | `@Validation.Email` |
+| `@Min` / `@Max` on int | `@Validation.Integer.Min` / `@Validation.Integer.Max` |
+| `@Min` / `@Max` on long | `@Validation.Long.Min` / `@Validation.Long.Max` |
+| `@Min` / `@Max` on other number | `@Validation.Number.Min` / `@Validation.Number.Max` |
+| `@Positive`, `@Negative`, etc. | `@Validation.Number.Positive`, etc. |
+| `@AssertTrue` / `@AssertFalse` | `@Validation.Boolean.True` / `@Validation.Boolean.False` |
+| `@Future` / `@Past` on Calendar | `@Validation.Calendar.Future` / `@Validation.Calendar.Past` |
+| `@io.dropwizard.validation.PortRange` | `@Validation.Integer.Min(1)` + `@Validation.Integer.Max(65535)` |
+| `@io.dropwizard.validation.Validated` | `@Validation.Valid` |
+| Other DW validators | Removed + `DW_MIGRATION_TODO` comment |
 
-No changes to annotation usage in code bodies — the rename is import-only.
+All `javax.validation.*`, `jakarta.validation.*`, `org.hibernate.validator.constraints.*`,
+and `io.dropwizard.validation.*` imports are replaced with a single
+`import io.helidon.validation.Validation`.
 
 ---
 
