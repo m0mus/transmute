@@ -47,31 +47,33 @@ scope only, for recipe integration tests. The same pattern applies to any migrat
 
 ```
 TransmuteCli (entry point)
-  └── MigrationWorkflow (10-step sequential pipeline)
+  └── MigrationWorkflow (11-step sequential pipeline)
         │
         ├── [1]  CopyProjectTool       copy source → output dir (original untouched)
         ├── [2]  JavaProjectVisitor    build ProjectInventory (Java types, imports,
         │                              annotations, supertypes)
-        ├── [3]  MigrationDiscovery    load *.recipe.md / *.feature.md from classpath
-        ├── [4]  MigrationPlanner      evaluate triggers; resolve target files;
+        ├── [3]  ProjectAnalysisAgent  AI reads inventory + key files → structured summary
+        │                              (prepended to all recipe/feature prompts)
+        ├── [4]  MigrationDiscovery    load *.recipe.md / *.feature.md from classpath
+        ├── [5]  MigrationPlanner      evaluate triggers; resolve target files;
         │                              deterministic sort by order (then name);
         │                              derive scope (FILE vs PROJECT)
-        ├── [5]  ApprovePlan           human gate (skipped if --auto-approve)
+        ├── [6]  ApprovePlan           human gate (skipped if --auto-approve)
         │
-        ├── [6]  ExecuteMigrations
+        ├── [7]  ExecuteMigrations
         │         ├── FILE-scoped recipes  → one agent call per file
         │         │     (all recipes targeting the same file merged into one prompt)
         │         ├── PROJECT-scoped migrations → one agent call for the whole output dir
         │         │                              (can modify multiple files)
         │         └── All agents append to migration-journal.md (cross-recipe context)
         │
-        ├── [7]  ReviewGate            human gate (skipped if --auto-approve)
+        ├── [8]  ReviewGate            human gate (skipped if --auto-approve)
         │
-        ├── [8]  CompileFixLoop        mvn compile → FixCompileErrorsAgent (max 5 iterations)
+        ├── [9]  CompileFixLoop        mvn compile → FixCompileErrorsAgent (max 5 iterations)
         │                              (reads migration-journal.md for context)
-        ├── [9]  TestFixLoop           mvn test    → FixTestFailuresAgent  (max 5 iterations)
+        ├── [10] TestFixLoop           mvn test    → FixTestFailuresAgent  (max 5 iterations)
         │                              (reads migration-journal.md for context)
-        └── [10] GenerateReport        writes migration-report.json
+        └── [11] GenerateReport        writes migration-report.json
 ```
 
 ---
@@ -176,6 +178,7 @@ io.transmute.agent/
   logging/
     PromptLogListener.java    Writes all AI prompts + responses to logs/ai-prompts.jsonl
   agent/
+    ProjectAnalysisAgent.java   AI service (LC4j): analyzes project structure → summary
     FixCompileErrorsAgent.java  AI service (LC4j): fixes compile errors using file I/O tools
     FixTestFailuresAgent.java   AI service (LC4j): fixes test failures using file I/O tools
   workflow/
@@ -234,12 +237,14 @@ interactions. Three providers are supported:
 
 | Step | AI? | Details |
 |------|-----|---------|
-| 1–5 | No | Pure Java |
-| 6 — Recipe/Feature execution | **Yes** | `SingleFileAgent` (FILE) or project-scope agent |
-| 7 | No | Human gate |
-| 8 — Compile fix | **Yes** | `FixCompileErrorsAgent` with file I/O tools |
-| 9 — Test fix | **Yes** | `FixTestFailuresAgent` with file I/O tools |
-| 10 | No | JSON report |
+| 1–2 | No | Pure Java |
+| 3 — Project analysis | **Yes** | `ProjectAnalysisAgent` produces structured summary |
+| 4–6 | No | Pure Java |
+| 7 — Recipe/Feature execution | **Yes** | `SingleFileAgent` (FILE) or project-scope agent |
+| 8 | No | Human gate |
+| 9 — Compile fix | **Yes** | `FixCompileErrorsAgent` with file I/O tools |
+| 10 — Test fix | **Yes** | `FixTestFailuresAgent` with file I/O tools |
+| 11 | No | JSON report |
 
 ### Prompt logging
 
@@ -273,7 +278,29 @@ pipeline — they flag files that may need manual review.
 
 ---
 
-## 11. Migration Journal
+## 11. Project Analysis Summary
+
+After scanning the project inventory (step 2), an AI agent (`ProjectAnalysisAgent`)
+reads the inventory metadata and the contents of key project files — the Application
+class, Configuration class, build file (pom.xml / build.gradle), and a sample of REST
+resources — and produces a structured markdown summary.
+
+This summary captures high-level project characteristics that pure structural scanning
+cannot infer: the DI framework in use, the authentication mechanism, architectural
+patterns (e.g. "constructor injection, resources take config + DAO"), registered bundles,
+and notable concerns.
+
+The summary is prepended to every recipe/feature system prompt as a `## Project Context`
+section, giving each migration agent awareness of the broader project without needing to
+read every file itself. This costs one AI call at pipeline start and improves migration
+quality by reducing decisions made in isolation.
+
+If the analysis agent fails (e.g. no API key configured), the pipeline continues without
+the summary — it is a quality enhancement, not a hard requirement.
+
+---
+
+## 12. Migration Journal
 
 The Migration Journal (`migration-journal.md`) is an append-only file in the output
 directory that provides cross-recipe and cross-agent context throughout the pipeline.
@@ -298,7 +325,7 @@ creates the file on first use and appends subsequent entries.
 
 ---
 
-## 12. Adding a New Migration Module
+## 13. Adding a New Migration Module
 
 
 1. Create a Maven project with no dependencies.

@@ -9,6 +9,8 @@ import io.transmute.agent.TransmuteConfig;
 import io.transmute.agent.ModelFactory;
 import io.transmute.agent.agent.FixCompileErrorsAgent;
 import io.transmute.agent.agent.FixTestFailuresAgent;
+import io.transmute.agent.agent.ProjectAnalysisAgent;
+import io.transmute.inventory.JavaFileInfo;
 import io.transmute.catalog.MarkdownMigrationLoader;
 import io.transmute.catalog.MigrationPlan;
 import io.transmute.catalog.MigrationPlanner;
@@ -36,10 +38,11 @@ import java.util.stream.Stream;
 /**
  * Runs the Transmute migration pipeline as plain sequential Java.
  *
- * <p>Pipeline (10 steps):
+ * <p>Pipeline (11 steps):
  * <ol>
  *   <li>Copy project to output dir</li>
  *   <li>Scan inventory</li>
+ *   <li>Analyze project (AI produces a structured summary for recipe context)</li>
  *   <li>Discover migrations</li>
  *   <li>Build migration plan</li>
  *   <li>Human approval (if !autoApprove)</li>
@@ -50,12 +53,13 @@ import java.util.stream.Stream;
  *   <li>Generate report</li>
  * </ol>
  *
- * <p>AI is used only in steps 6 (recipe/feature agent calls) and 8–9 (fix agents).
+ * <p>AI is used in steps 3 (project analysis), 7 (recipe/feature agent calls),
+ * and 9–10 (fix agents).
  */
 public class MigrationWorkflow {
 
     private static final int MAX_FIX_ITERATIONS = 5;
-    private static final int TOTAL_STEPS = 10;
+    private static final int TOTAL_STEPS = 11;
     private static final String JOURNAL_FILE = "migration-journal.md";
 
     private final TransmuteConfig config;
@@ -63,6 +67,7 @@ public class MigrationWorkflow {
 
     // Pipeline state — populated as steps execute
     private ProjectInventory inventory;
+    private String projectSummary = "";
     private List<Migration> migrations;
     private MigrationPlan plan;
     private long migrationsExecuted;
@@ -80,6 +85,7 @@ public class MigrationWorkflow {
 
         copyProject();
         scanInventory();
+        analyzeProject();
         discoverMigrations();
         buildPlan();
         approvePlan();
@@ -115,15 +121,32 @@ public class MigrationWorkflow {
         Con.rule();
     }
 
+    private void analyzeProject() {
+        Con.step(3, TOTAL_STEPS, "Analyzing project structure");
+        try {
+            var inventorySummary = buildInventorySummary();
+            var keyFileContents = readKeyFiles();
+            projectSummary = AiServices.builder(ProjectAnalysisAgent.class)
+                    .chatModel(ModelFactory.create())
+                    .build()
+                    .analyze(inventorySummary, keyFileContents);
+            Con.ok("Project analysis complete (" + projectSummary.lines().count() + " lines)");
+        } catch (Exception e) {
+            Con.warn("Project analysis failed (continuing without): " + e.getMessage());
+            projectSummary = "";
+        }
+        Con.rule();
+    }
+
     private void discoverMigrations() {
-        Con.step(3, TOTAL_STEPS, "Discovering migrations");
+        Con.step(4, TOTAL_STEPS, "Discovering migrations");
         migrations = List.copyOf(new MarkdownMigrationLoader().load());
         Con.info("Found " + Con.bold(migrations.size() + " migrations"));
         Con.rule();
     }
 
     private void buildPlan() {
-        Con.step(4, TOTAL_STEPS, "Building migration plan");
+        Con.step(5, TOTAL_STEPS, "Building migration plan");
         plan = new MigrationPlanner().plan(migrations, inventory, List.of());
         Con.info("Migrations in plan: " + Con.bold(String.valueOf(plan.entries().size())));
         for (var entry : plan.entries()) {
@@ -148,7 +171,7 @@ public class MigrationWorkflow {
     }
 
     private void approvePlan() {
-        Con.step(5, TOTAL_STEPS, "Plan approval");
+        Con.step(6, TOTAL_STEPS, "Plan approval");
         if (config.autoApprove()) {
             Con.info(Con.DIM + "auto-approve" + Con.RESET);
             Con.rule();
@@ -162,7 +185,7 @@ public class MigrationWorkflow {
     }
 
     private void executeMigrations() {
-        Con.step(6, TOTAL_STEPS, "Executing migrations");
+        Con.step(7, TOTAL_STEPS, "Executing migrations");
         if (plan.entries().isEmpty()) {
             Con.warn("No migrations to execute.");
             Con.rule();
@@ -205,7 +228,7 @@ public class MigrationWorkflow {
     }
 
     private void reviewGate() {
-        Con.step(7, TOTAL_STEPS, "Review changes");
+        Con.step(8, TOTAL_STEPS, "Review changes");
         if (config.autoApprove()) {
             Con.info(Con.DIM + "auto-approve" + Con.RESET);
             Con.rule();
@@ -220,7 +243,7 @@ public class MigrationWorkflow {
     }
 
     private void compileFixLoop() {
-        Con.step(8, TOTAL_STEPS, "Compile-fix loop  (max " + MAX_FIX_ITERATIONS + " attempts)");
+        Con.step(9, TOTAL_STEPS, "Compile-fix loop  (max " + MAX_FIX_ITERATIONS + " attempts)");
         for (int i = 1; i <= MAX_FIX_ITERATIONS; i++) {
             System.out.println("  " + Con.DIM + "Compiling… [" + i + "/" + MAX_FIX_ITERATIONS + "]" + Con.RESET);
             var result = new CompileProjectTool(config.activeProfiles()).runCompile(config.outputDir());
@@ -241,7 +264,7 @@ public class MigrationWorkflow {
     }
 
     private void testFixLoop() {
-        Con.step(9, TOTAL_STEPS, "Test-fix loop  (max " + MAX_FIX_ITERATIONS + " attempts)");
+        Con.step(10, TOTAL_STEPS, "Test-fix loop  (max " + MAX_FIX_ITERATIONS + " attempts)");
         for (int i = 1; i <= MAX_FIX_ITERATIONS; i++) {
             System.out.println("  " + Con.DIM + "Running tests… [" + i + "/" + MAX_FIX_ITERATIONS + "]" + Con.RESET);
             var result = new RunTestsTool(config.activeProfiles()).runMvnTest(config.outputDir());
@@ -262,7 +285,7 @@ public class MigrationWorkflow {
     }
 
     private void generateReport() throws Exception {
-        Con.step(10, TOTAL_STEPS, "Generating migration report");
+        Con.step(11, TOTAL_STEPS, "Generating migration report");
         var report = new LinkedHashMap<String, Object>();
         report.put("sourceDir", config.projectDir());
         report.put("outputDir", config.outputDir());
@@ -315,10 +338,12 @@ public class MigrationWorkflow {
             return false;
         }
         try {
+            var systemPrompt = aiMigration.systemPromptSection()
+                    + (projectSummary.isBlank() ? "" : "\n\n## Project Context\n" + projectSummary);
             AiServices.builder(SingleFileAgent.class)
                     .chatModel(model)
                     .tools(new FileOperationsTool(workspace.outputDir()))
-                    .systemMessageProvider(id -> aiMigration.systemPromptSection())
+                    .systemMessageProvider(id -> systemPrompt)
                     .build()
                     .apply("Apply the migration to the project at: " + workspace.outputDir()
                             + "\nUse paths relative to the output directory."
@@ -420,6 +445,10 @@ public class MigrationWorkflow {
                 Include: what migration(s) you applied, which file you changed, and any \
                 decisions or edge cases worth noting for subsequent migrations or fix agents.
                 """);
+
+        if (!projectSummary.isBlank()) {
+            sb.append("\n## Project Context\n").append(projectSummary).append("\n");
+        }
 
         for (var migration : aiMigrations) {
             sb.append("\n## ").append(migration.skillName());
@@ -546,6 +575,89 @@ public class MigrationWorkflow {
         if (lines.length > limit) {
             System.out.println(Con.DIM + "    … " + (lines.length - limit) + " more lines" + Con.RESET);
         }
+    }
+
+    private String buildInventorySummary() {
+        var sb = new StringBuilder();
+        sb.append("Java files: ").append(inventory.getJavaFiles().size()).append("\n\n");
+        for (var file : inventory.getJavaFiles()) {
+            sb.append("### ").append(file.className()).append("\n");
+            sb.append("  File: ").append(file.sourceFile()).append("\n");
+            if (!file.superTypes().isEmpty()) {
+                sb.append("  Extends/implements: ").append(String.join(", ", file.superTypes())).append("\n");
+            }
+            if (!file.annotationTypes().isEmpty()) {
+                sb.append("  Annotations: ").append(String.join(", ", file.annotationTypes())).append("\n");
+            }
+            var keyImports = file.imports().stream()
+                    .filter(i -> !i.startsWith("java.") && !i.startsWith("javax."))
+                    .sorted()
+                    .toList();
+            if (!keyImports.isEmpty()) {
+                sb.append("  Key imports: ").append(String.join(", ", keyImports)).append("\n");
+            }
+            sb.append("\n");
+        }
+        if (!inventory.getDependencies().isEmpty()) {
+            sb.append("## Dependencies\n");
+            for (var dep : inventory.getDependencies()) {
+                sb.append("  ").append(dep).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private String readKeyFiles() {
+        var sb = new StringBuilder();
+        var projectRoot = Path.of(config.projectDir());
+
+        // Read build files
+        for (var buildFile : List.of("pom.xml", "build.gradle", "build.gradle.kts")) {
+            var path = projectRoot.resolve(buildFile);
+            if (Files.exists(path)) {
+                appendFileContent(sb, buildFile, path);
+            }
+        }
+
+        // Read Application class, Configuration class, and a few representative sources
+        var interesting = inventory.getJavaFiles().stream()
+                .filter(f -> f.superTypes().stream().anyMatch(st ->
+                        st.contains("Application") || st.contains("Configuration")
+                                || st.contains("Managed") || st.contains("HealthCheck")))
+                .limit(5)
+                .toList();
+        for (var file : interesting) {
+            var path = projectRoot.resolve(file.sourceFile());
+            if (Files.exists(path)) {
+                appendFileContent(sb, file.sourceFile(), path);
+            }
+        }
+
+        // Read a couple of representative resources (REST endpoints)
+        var resources = inventory.getJavaFiles().stream()
+                .filter(f -> f.imports().stream().anyMatch(i -> i.contains("javax.ws.rs") || i.contains("jakarta.ws.rs")))
+                .limit(2)
+                .toList();
+        for (var file : resources) {
+            if (interesting.contains(file)) continue;
+            var path = projectRoot.resolve(file.sourceFile());
+            if (Files.exists(path)) {
+                appendFileContent(sb, file.sourceFile(), path);
+            }
+        }
+
+        return sb.toString();
+    }
+
+    private void appendFileContent(StringBuilder sb, String label, Path path) {
+        try {
+            var content = Files.readString(path);
+            // Truncate very large files
+            if (content.length() > 5000) {
+                content = content.substring(0, 5000) + "\n... (truncated)";
+            }
+            sb.append("### ").append(label).append("\n```\n").append(content).append("\n```\n\n");
+        } catch (Exception ignored) {}
     }
 
     private String readJournal() {

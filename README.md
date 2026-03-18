@@ -16,21 +16,23 @@ For the full design, rationale, and API reference see [PROJECT.md](PROJECT.md).
 1. Copy project to an output directory (original is untouched)
 2. Scan the project: build a ProjectInventory of all Java types, imports, annotations,
    and inter-module relationships
-3. Discover migrations: load *.recipe.md / *.feature.md files from the classpath
-4. Plan: evaluate trigger conditions against the inventory; resolve target files;
+3. Analyze project: AI reads inventory + key files → structured summary
+   (prepended to all recipe prompts for broader context)
+4. Discover migrations: load *.recipe.md / *.feature.md files from the classpath
+5. Plan: evaluate trigger conditions against the inventory; resolve target files;
    sort by order; derive execution scope
-5. Human approval gate — the plan is shown before anything is executed
-6. Execute migrations in order:
+6. Human approval gate — the plan is shown before anything is executed
+7. Execute migrations in order:
      • Recipes (FILE scope) — one AI agent call per file, all matching recipes merged
      • Project-scoped migrations — one AI agent call for the whole output directory
        (can modify multiple files)
      • Each agent appends to a migration journal for cross-recipe context
-7. Human review gate
-8. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
+8. Human review gate
+9. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
      — reads migration journal for context on what was changed and why
-9. Test-fix loop: AI agent fixes test failures (max 5 iterations)
+10. Test-fix loop: AI agent fixes test failures (max 5 iterations)
      — reads migration journal for context on what was changed and why
-10. Generate a migration report (JSON)
+11. Generate a migration report (JSON)
 ```
 
 Migrations are plain `.recipe.md` or `.feature.md` files. The front-matter declares
