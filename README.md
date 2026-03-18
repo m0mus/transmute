@@ -175,7 +175,8 @@ A migration module is a Maven project with no dependencies. Place `.recipe.md` o
 | `type` | yes | `recipe` or `feature` (scope is derived from triggers) |
 | `order` | no | Execution order, default 50 |
 | `triggers` | no | List of trigger conditions (omit → always triggered) |
-| `postchecks` | no | `forbidImports`, `requireImports` post-execution assertions |
+| `transforms` | no | `annotations` and `types` lists declaring FQN ownership (used by features for conflict detection) |
+| `postchecks` | no | `forbidImports`, `requireImports`, `forbidPatterns` post-execution assertions |
 
 **Trigger types:**
 
@@ -205,8 +206,9 @@ from `recipes/` and `features/` on the classpath automatically.
 
 ---
 
-See [transmute-dw-helidon/README.md](transmute-dw-helidon/README.md) for a worked example
-covering build system migration, JAX-RS annotation rewriting, and HealthCheck migration.
+See [transmute-dw-helidon/README.md](transmute-dw-helidon/README.md) for the full
+Dropwizard→Helidon migration reference: all 12 migrations, what each one does, and what
+requires manual follow-up.
 
 See [PROJECT.md](PROJECT.md) for the full design: trigger system, scope derivation,
 AI prompt composition, postcheck rules, and all architectural decisions.

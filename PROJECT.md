@@ -76,13 +76,14 @@ TransmuteCli (entry point)
 
 All migrations are markdown files loaded from the classpath. There are two kinds:
 
-**Recipe** (`type: recipe`) — FILE scope. Triggered by Java file analysis (imports,
-annotations, supertypes). One AI agent call per matching file. All recipes targeting
-the same file are merged into one combined prompt so all transformations apply atomically.
+**Recipe** (`type: recipe`) — A standalone migration unit. A given file matches at most
+one recipe. Scope is derived from triggers: FILE if any trigger uses `imports`,
+`annotations`, `superTypes`, or `files`; PROJECT otherwise.
 
-**Feature** (`type: feature`) — FILE scope when triggering on file-level signals
-(`imports`, `annotations`, `superTypes`, or `files`). PROJECT scope only when no
-file-targeting trigger is present (for run-once global operations).
+**Feature** (`type: feature`) — A cross-cutting fragment. A feature is merged into
+whichever recipe(s) share the same target file, so multiple features can compose with
+one recipe in a single AI call. Scope is derived from triggers by the same rules as
+recipes. Features typically target file-level signals and therefore run at FILE scope.
 
 ### Front-matter reference
 
@@ -96,9 +97,13 @@ triggers:
     annotations: [com.example.OldAnnot]    # file uses any of these annotations
     superTypes: [com.example.OldBase]      # file extends/implements any of these
   - files: [pom.xml, build.gradle]         # project root contains any of these files
+transforms:
+  annotations: [com.example.OldAnnot]     # FQN ownership — used by features for conflict detection
+  types: [com.example.OldBase]
 postchecks:
   forbidImports: [com.example.OldClass]    # warn if target file still imports these
   requireImports: [com.example.NewClass]   # warn if target file does not import these
+  forbidPatterns: ["OldApi\\.deprecated"]  # warn if target file matches any listed regex
 ---
 
 <markdown body — becomes the AI system prompt>

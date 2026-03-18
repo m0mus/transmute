@@ -122,6 +122,123 @@ class MigrationPlannerTest {
         assertTrue(targets.contains("src/main/java/acme/Foo.java"));
     }
 
+    @Test
+    void multipleRecipesTargetingSameFileAreBothInPlan() {
+        var inventory = emptyInventory(tempDir);
+        inventory.setJavaFiles(List.of(new JavaFileInfo(
+                "src/main/java/acme/Bar.java",
+                "acme.Bar",
+                Set.of(),
+                Set.of("com.example.SomeImport"),
+                Set.of(),
+                Map.of())));
+
+        var triggerA = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of(), List.of(), List.of());
+        var triggerB = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of(), List.of(), List.of());
+
+        var recipeA = new AiMigration("Recipe A", 1, List.of(triggerA), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
+        var recipeB = new AiMigration("Recipe B", 5, List.of(triggerB), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
+
+        var plan = new MigrationPlanner().plan(List.of(recipeB, recipeA), inventory, List.of());
+        assertEquals(2, plan.entries().size());
+        assertEquals("Recipe A", plan.entries().get(0).migration().name());
+        assertEquals("Recipe B", plan.entries().get(1).migration().name());
+        assertTrue(plan.entries().get(0).targetFiles().stream().map(this::normalize).toList()
+                .contains("src/main/java/acme/Bar.java"));
+        assertTrue(plan.entries().get(1).targetFiles().stream().map(this::normalize).toList()
+                .contains("src/main/java/acme/Bar.java"));
+    }
+
+    @Test
+    void featureAndRecipeTargetingSameFileAreBothInPlan() {
+        var inventory = emptyInventory(tempDir);
+        inventory.setJavaFiles(List.of(new JavaFileInfo(
+                "src/main/java/acme/Baz.java",
+                "acme.Baz",
+                Set.of(),
+                Set.of("org.shared.SharedImport"),
+                Set.of(),
+                Map.of())));
+
+        var trigger = new MarkdownTrigger(List.of("org.shared."), List.of(), List.of(), List.of(), List.of(), List.of());
+
+        var recipe = new AiMigration("My Recipe", 1, List.of(trigger), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
+        var feature = new AiMigration("My Feature", 2, List.of(trigger), MarkdownPostchecks.empty(), RecipeKind.FEATURE, List.of(), List.of(), "prompt");
+
+        var plan = new MigrationPlanner().plan(List.of(feature, recipe), inventory, List.of());
+        assertEquals(2, plan.entries().size());
+        var names = plan.entries().stream().map(e -> e.migration().name()).toList();
+        assertTrue(names.contains("My Recipe"));
+        assertTrue(names.contains("My Feature"));
+        plan.entries().forEach(e ->
+                assertTrue(e.targetFiles().stream().map(this::normalize).toList()
+                        .contains("src/main/java/acme/Baz.java")));
+    }
+
+    @Test
+    void superTypesMigrationExcludedWhenNoFileMatchesSuperType() {
+        var inventory = emptyInventory(tempDir);
+        inventory.setJavaFiles(List.of(new JavaFileInfo(
+                "src/main/java/acme/NoMatch.java",
+                "acme.NoMatch",
+                Set.of(),
+                Set.of(),
+                Set.of("java.lang.Object"),
+                Map.of())));
+
+        var migration = migration(
+                "Super Type Migration",
+                3,
+                List.of(new MarkdownTrigger(
+                        List.of(),
+                        List.of(),
+                        List.of("com.example.Foo"),
+                        List.of(),
+                        List.of(),
+                        List.of())));
+
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of());
+        assertTrue(plan.entries().isEmpty());
+    }
+
+    @Test
+    void compileErrorTriggerFiresWhenErrorMatches() {
+        var inventory = emptyInventory(tempDir);
+
+        var migration = migration(
+                "Compile Error Migration",
+                1,
+                List.of(new MarkdownTrigger(
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of("cannot find symbol"),
+                        List.of())));
+
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of("error: cannot find symbol"));
+        assertEquals(1, plan.entries().size());
+    }
+
+    @Test
+    void compileErrorTriggerDoesNotFireWhenErrorAbsent() {
+        var inventory = emptyInventory(tempDir);
+
+        var migration = migration(
+                "Compile Error Migration Absent",
+                1,
+                List.of(new MarkdownTrigger(
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of("cannot find symbol"),
+                        List.of())));
+
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of());
+        assertTrue(plan.entries().isEmpty());
+    }
+
     private ProjectInventory emptyInventory(Path root) {
         var inventory = new ProjectInventory();
         inventory.setRootDir(root.toAbsolutePath().normalize().toString());
