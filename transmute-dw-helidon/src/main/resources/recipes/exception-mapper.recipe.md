@@ -23,7 +23,7 @@ Remove the `@Provider` annotation if present.
 
 Add `@Service.Singleton` to the class.
 
-Add `@Http.Endpoint` to the class so that it is discoverable as an HTTP service component.
+Add `@RestServer.Endpoint` to the class so that it is discoverable as an HTTP service component (import `io.helidon.webserver.http.RestServer`).
 
 ## toResponse() method
 
@@ -51,7 +51,7 @@ After adding the TODO comment, remove the `toResponse()` method body and signatu
 (do not keep an empty or broken method).
 
 If the class becomes empty after the removal, keep the class declaration with only the
-`@Service.Singleton` and `@Http.Endpoint` annotations plus a class-level TODO comment:
+`@Service.Singleton` and `@RestServer.Endpoint` annotations plus a class-level TODO comment:
 
 ```java
 // DW_MIGRATION_TODO[manual]: was ExceptionMapper<E> — class body removed; wire error handling in Main.routing()
@@ -70,7 +70,7 @@ Remove:
 
 Add:
 - `io.helidon.service.registry.Service`
-- `io.helidon.webserver.http.Http`
+- `io.helidon.webserver.http.RestServer`
 
 ## DO NOT touch
 

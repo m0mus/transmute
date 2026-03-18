@@ -16,25 +16,28 @@ declarative HTTP annotations from `io.helidon.http.Http` and the service registr
 
 ## Class-level changes
 
-1. Add `@Http.Endpoint` to the class (import `io.helidon.webserver.http.Http`).
+1. Add `@RestServer.Endpoint` to the class (import `io.helidon.webserver.http.RestServer`).
 2. Add `@Service.Singleton` to the class (import `io.helidon.service.registry.Service`).
-3. Remove `@Path` from the class — the Helidon path is expressed per-method via `@Http.GET(path=...)` etc.
+3. Replace `@Path("/foo")` on the class with `@Http.Path("/foo")` (import `io.helidon.http.Http`).
 
 ## HTTP method annotations
 
-Replace all JAX-RS HTTP method + `@Path` combinations:
+Replace JAX-RS HTTP method annotations with Helidon equivalents.
+Path is specified with a **separate** `@Http.Path` annotation — NOT as an attribute of the method annotation.
 
 | Remove | Add |
 |--------|-----|
-| `@GET` + `@Path("/foo")` | `@Http.GET(path = "/foo")` |
-| `@POST` + `@Path("/foo")` | `@Http.POST(path = "/foo")` |
-| `@PUT` + `@Path("/foo")` | `@Http.PUT(path = "/foo")` |
-| `@DELETE` + `@Path("/foo")` | `@Http.DELETE(path = "/foo")` |
-| `@PATCH` + `@Path("/foo")` | `@Http.PATCH(path = "/foo")` |
-| `@HEAD` + `@Path("/foo")` | `@Http.HEAD(path = "/foo")` |
-| `@OPTIONS` + `@Path("/foo")` | `@Http.OPTIONS(path = "/foo")` |
+| `@GET` + `@Path("/foo")` | `@Http.GET` + `@Http.Path("/foo")` |
+| `@POST` + `@Path("/foo")` | `@Http.POST` + `@Http.Path("/foo")` |
+| `@PUT` + `@Path("/foo")` | `@Http.PUT` + `@Http.Path("/foo")` |
+| `@DELETE` + `@Path("/foo")` | `@Http.DELETE` + `@Http.Path("/foo")` |
+| `@PATCH` + `@Path("/foo")` | `@Http.PATCH` + `@Http.Path("/foo")` |
+| `@HEAD` + `@Path("/foo")` | `@Http.HEAD` + `@Http.Path("/foo")` |
+| `@OPTIONS` + `@Path("/foo")` | `@Http.OPTIONS` + `@Http.Path("/foo")` |
 
-If a method has an HTTP annotation but no `@Path`, use `@Http.GET` (etc.) without a `path` argument.
+If a method has an HTTP annotation but no `@Path`, use `@Http.GET` (etc.) without `@Http.Path`.
+
+**IMPORTANT:** `@Http.GET`, `@Http.POST`, etc. take NO arguments. Path is ALWAYS a separate `@Http.Path` annotation.
 
 ## Parameter annotations
 
@@ -72,16 +75,21 @@ Replace `javax.ws.rs.core.Response` / `jakarta.ws.rs.core.Response` return types
 - Change method return type to `void` if the only usage is `Response.ok().build()` or similar simple success response.
 - Otherwise change return type to `ServerResponse` and add a TODO comment:
   ```java
-  // DW_MIGRATION_TODO[manual]: was Response — adapt to ServerResponse / Helidon response API
+  // DW_MIGRATION_TODO[manual]: was Response -- adapt to ServerResponse / Helidon response API
   ```
 - Import `io.helidon.webserver.http.ServerResponse`.
 
 ## @Produces / @Consumes
 
-Remove `@Produces` and `@Consumes` annotations and replace each with a TODO comment on the same line:
-```java
-// DW_MIGRATION_TODO[manual]: was @Produces / @Consumes — configure content negotiation in Helidon routing
-```
+Replace JAX-RS `@Produces` and `@Consumes` annotations with their Helidon equivalents:
+
+| Remove | Add |
+|--------|-----|
+| `@Produces(MediaType.APPLICATION_JSON)` | `@Http.Produces(io.helidon.common.media.type.MediaTypes.APPLICATION_JSON_VALUE)` |
+| `@Consumes(MediaType.APPLICATION_JSON)` | `@Http.Consumes(io.helidon.common.media.type.MediaTypes.APPLICATION_JSON_VALUE)` |
+| `@Produces(MediaType.TEXT_PLAIN)` | `@Http.Produces(io.helidon.common.media.type.MediaTypes.TEXT_PLAIN_VALUE)` |
+
+If the media type constant is not available, use the string literal directly (e.g., `"application/json"`).
 
 ## Auth-injected parameters
 
@@ -95,9 +103,10 @@ used as the auth principal), **remove the parameter entirely** from the method s
 Add a TODO comment above the method:
 
 ```java
-// DW_MIGRATION_TODO[manual]: @Auth User parameter removed — inject via Helidon Security
+// DW_MIGRATION_TODO[manual]: @Auth User parameter removed -- inject via Helidon Security
 //   See: https://helidon.io/docs/v4/se/security
-@Http.GET(path = "/secret")
+@Http.GET
+@Http.Path("/secret")
 public String showSecret() {
     // DW_MIGRATION_TODO: obtain authenticated user from Helidon SecurityContext
 ```
@@ -119,7 +128,7 @@ If the class extends a Dropwizard class (e.g., `View`, `AbstractDAO`) or impleme
 Dropwizard interface (`Managed`, `Authenticator`, `Authorizer`, `UnauthorizedHandler`),
 remove the `extends`/`implements` clause and add a TODO comment on the class declaration line:
 ```java
-// DW_MIGRATION_TODO[manual]: was extends/implements <ClassName> — implement Helidon equivalent
+// DW_MIGRATION_TODO[manual]: was extends/implements <ClassName> -- implement Helidon equivalent
 ```
 
 ## Bundle imports
@@ -135,12 +144,13 @@ Remove all imports from:
 - `io.dropwizard.jersey.jsr310.*`
 
 Add required Helidon imports:
-- `io.helidon.webserver.http.Http` (for `@Http.Endpoint`, `@Http.GET`, etc.)
+- `io.helidon.http.Http` (for `@Http.GET`, `@Http.Path`, `@Http.PathParam`, etc.)
+- `io.helidon.webserver.http.RestServer` (for `@RestServer.Endpoint`)
 - `io.helidon.service.registry.Service` (for `@Service.Singleton`)
 - Any other Helidon imports needed based on what is used.
 
 ## DO NOT touch
 
 Do NOT modify anything related to:
-- `@Inject`, `@Named`, Guice `Injector` or `Module` — handled by the Injection feature.
-- `@Timed`, `@Metered`, `MetricRegistry` — handled by the Metrics Migration recipe.
+- `@Inject`, `@Named`, Guice `Injector` or `Module` -- handled by the Injection feature.
+- `@Timed`, `@Metered`, `MetricRegistry` -- handled by the Metrics Migration recipe.

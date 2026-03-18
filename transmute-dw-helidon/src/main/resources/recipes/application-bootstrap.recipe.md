@@ -52,7 +52,7 @@ public class Main {
     }
 
     static void routing(HttpRouting.Builder routing) {
-        // @Http.Endpoint classes are auto-registered via service registry.
+        // @RestServer.Endpoint classes are auto-registered via service registry.
         // Add explicit routes here only for non-annotated services.
     }
 }
@@ -79,11 +79,11 @@ TODO comment inside the `routing()` method:
 ## Step 3 — Handle run() registrations
 
 For each `environment.jersey().register(new XyzResource())` in the original `run()`:
-- If `XyzResource` has been (or will be) migrated to use `@Http.Endpoint` + `@Service.Singleton`,
+- If `XyzResource` has been (or will be) migrated to use `@RestServer.Endpoint` + `@Service.Singleton`,
   no routing code is needed — it is auto-discovered.
 - Otherwise, add a TODO comment in `routing()`:
   ```java
-  // TODO: register XyzResource if not annotated with @Http.Endpoint
+  // TODO: register XyzResource if not annotated with @RestServer.Endpoint
   ```
 
 For each `environment.lifecycle().manage(new XyzManaged())`:

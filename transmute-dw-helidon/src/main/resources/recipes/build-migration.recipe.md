@@ -53,7 +53,7 @@ Fill in the captured identity values. Then:
     <parent>
         <groupId>io.helidon.applications</groupId>
         <artifactId>helidon-se</artifactId>
-        <version>4.3.4</version>
+        <version>4.4.0</version>
         <relativePath/>
     </parent>
 
@@ -88,6 +88,14 @@ Fill in the captured identity values. Then:
             <groupId>io.helidon.logging</groupId>
             <artifactId>helidon-logging-jul</artifactId>
             <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.health</groupId>
+            <artifactId>helidon-health</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.validation</groupId>
+            <artifactId>helidon-validation</artifactId>
         </dependency>
         <!-- Preserved application dependencies go here -->
     </dependencies>
