@@ -14,4 +14,18 @@
     <name>Transmute :: Dropwizard to Helidon Recipes</name>
     <description>Recipes and features for Dropwizard 3 to Helidon 4 SE migrations</description>
 
+    <dependencies>
+        <dependency>
+            <groupId>io.transmute</groupId>
+            <artifactId>transmute-core</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
 </project>
