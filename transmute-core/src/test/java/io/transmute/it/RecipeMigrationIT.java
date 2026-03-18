@@ -78,11 +78,14 @@ class RecipeMigrationIT {
     @Test
     void unitOfWorkMigration() throws Exception {
         var input = fixture("PeopleResource.java");
-        var output = harness.applyRecipe("REST Resource", input);
-        var failures = harness.runPostchecks("REST Resource", output);
+        var output = harness.applyRecipe("Unit of Work / Hibernate Migration", input);
+        var failures = harness.runPostchecks("Unit of Work / Hibernate Migration", output);
 
         assertTrue(failures.isEmpty(), "Postcheck failures: " + failures);
-        assertFalse(output.contains("@UnitOfWork"), "UnitOfWork should be removed");
+        // Check no active @UnitOfWork annotation (comments containing the text are fine)
+        assertFalse(output.lines().anyMatch(l -> l.stripLeading().startsWith("@UnitOfWork")),
+                "UnitOfWork annotation should be removed");
+        assertFalse(output.contains("import io.dropwizard.hibernate"), "DW hibernate import should be removed");
     }
 
     private String fixture(String name) throws Exception {

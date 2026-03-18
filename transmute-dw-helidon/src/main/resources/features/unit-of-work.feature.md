@@ -3,7 +3,6 @@ name: Unit of Work / Hibernate Migration
 type: feature
 triggers:
   - imports: [io.dropwizard.hibernate]
-    annotations: [io.dropwizard.hibernate.UnitOfWork]
   - imports: [io.dropwizard.db]
 postchecks:
   forbidImports:
@@ -17,14 +16,40 @@ using the Helidon DB Client (`io.helidon.dbclient.DbClient`).
 
 ## @UnitOfWork annotation
 
-For every method annotated with `@UnitOfWork` or `@UnitOfWork(readOnly = true)`:
+**IMPORTANT:** For every method that has a `@UnitOfWork` annotation on it, you MUST:
+1. Delete the `@UnitOfWork` line from the method.
+2. Insert a TODO comment on the line directly above the method signature.
+3. Remove the `import io.dropwizard.hibernate.UnitOfWork` import line.
 
-1. Remove the `@UnitOfWork` annotation.
-2. Add a TODO comment directly above the method:
-   ```java
-   // DW_MIGRATION_TODO[manual]: was @UnitOfWork — manage transaction manually via DbClient
-   // Example: dbClient.execute().createNamedQuery("...").execute();
-   ```
+Example — before:
+```java
+@POST
+@UnitOfWork
+public Person createPerson(@Valid Person person) {
+    return peopleDAO.create(person);
+}
+
+@GET
+@UnitOfWork
+public List<Person> listPeople() {
+    return peopleDAO.findAll();
+}
+```
+
+Example — after:
+```java
+@POST
+// DW_MIGRATION_TODO[manual]: was @UnitOfWork — manage transaction manually via DbClient
+public Person createPerson(@Valid Person person) {
+    return peopleDAO.create(person);
+}
+
+@GET
+// DW_MIGRATION_TODO[manual]: was @UnitOfWork — manage transaction manually via DbClient
+public List<Person> listPeople() {
+    return peopleDAO.findAll();
+}
+```
 
 ## AbstractDAO subclasses
 

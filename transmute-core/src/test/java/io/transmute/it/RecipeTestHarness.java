@@ -27,6 +27,11 @@ class RecipeTestHarness {
 
     RecipeTestHarness() {
         allMigrations = new MarkdownMigrationLoader().load();
+        if (allMigrations.isEmpty()) {
+            throw new IllegalStateException(
+                    "No migrations loaded — transmute-dw-helidon JAR may be stale or missing from local repo. "
+                    + "Run: mvn install -DskipTests --also-make -pl transmute-core");
+        }
     }
 
     /**
@@ -51,16 +56,24 @@ class RecipeTestHarness {
             ModelFactory.configure(config);
             var model = ModelFactory.create();
 
-            // Build the AI agent identical to MigrationWorkflow.applyToFile()
+            // Build the AI agent using the same system prompt framing as MigrationWorkflow
             var outputDir = tempDir.toString();
+            var systemPrompt = """
+                    You are an expert Java developer executing a framework migration.
+                    Apply ALL transformations described below. Follow every instruction exactly.
+                    Do not skip any step. Do not modify anything not covered below.
+
+                    ## %s
+                    %s
+                    """.formatted(migration.skillName(), migration.systemPromptSection());
             AiServices.builder(SingleFileAgent.class)
                     .chatModel(model)
                     .tools(new FileOperationsTool(outputDir))
-                    .systemMessageProvider(id -> migration.systemPromptSection())
+                    .systemMessageProvider(id -> systemPrompt)
                     .build()
                     .apply("Apply all migrations to: " + fileName + "\n"
                             + "Output directory: " + outputDir + "\n"
-                            + "Read the file, apply the migration, write it back.");
+                            + "Read the file, apply every transformation, write it back.");
 
             return Files.readString(inputFile);
         } finally {

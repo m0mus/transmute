@@ -46,7 +46,20 @@ as `BasicCredentials` or `OAuthCredentials`, and `P` is the principal type):
    // DW_MIGRATION_TODO[manual]: was Authenticator<C, P> — implement Helidon Security provider.
    // See: https://helidon.io/docs/v4/se/security
    ```
-4. Keep the `authenticate()` method body intact for reference — do not delete it.
+4. Wrap the entire `authenticate()` method (signature + body) in a block comment `/* ... */`
+   and add a TODO stub immediately after it:
+   ```java
+   /*
+    * DW_MIGRATION_TODO[reference]: original Authenticator implementation
+    * @Override
+    * public Optional<User> authenticate(BasicCredentials credentials) throws AuthenticationException {
+    *     ... original body ...
+    * }
+    */
+   // DW_MIGRATION_TODO[manual]: implement Helidon Security provider — inject SecurityContext
+   ```
+   This ensures all `io.dropwizard.auth.*` types (BasicCredentials, AuthenticationException, etc.)
+   are removed from active code and their imports can be safely removed.
 
 ## Authorizer<P> implementations
 
