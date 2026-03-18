@@ -83,6 +83,36 @@ Remove `@Produces` and `@Consumes` annotations and replace each with a TODO comm
 // DW_MIGRATION_TODO[manual]: was @Produces / @Consumes — configure content negotiation in Helidon routing
 ```
 
+## Auth-injected parameters
+
+Helidon declarative HTTP methods only accept parameters with registered parameter handlers
+(`@Http.PathParam`, `@Http.QueryParam`, `@Http.HeaderParam`, `@Http.Entity`, etc.).
+Unrecognized parameter types cause a compile-time `CodegenException`.
+
+For any method parameter annotated with `@Auth` (from `io.dropwizard.auth`), or any
+parameter of a Dropwizard auth type (`User`, `Principal`, `SecurityContext`, or any type
+used as the auth principal), **remove the parameter entirely** from the method signature.
+Add a TODO comment above the method:
+
+```java
+// DW_MIGRATION_TODO[manual]: @Auth User parameter removed — inject via Helidon Security
+//   See: https://helidon.io/docs/v4/se/security
+@Http.GET(path = "/secret")
+public String showSecret() {
+    // DW_MIGRATION_TODO: obtain authenticated user from Helidon SecurityContext
+```
+
+If the method body references the removed parameter, replace those usages with a
+placeholder or TODO comment so the code compiles:
+- For string formatting: use a placeholder like `"anonymous"`
+- For method calls on the removed object: comment them out with a TODO
+
+## Context-injected parameters
+
+Similarly, remove any parameter annotated with `@Context` (from `javax.ws.rs.core`) or
+any `SecurityContext`, `HttpServletRequest`, `HttpServletResponse`, `UriInfo` parameter.
+These have no direct equivalent in Helidon declarative HTTP. Add a TODO comment.
+
 ## Dropwizard base class stripping
 
 If the class extends a Dropwizard class (e.g., `View`, `AbstractDAO`) or implements a

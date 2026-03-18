@@ -2,7 +2,8 @@
 name: Metrics Migration
 type: recipe
 triggers:
-  - imports: [com.codahale.metrics]
+  - imports: [com.codahale.metrics.annotation]
+  - imports: [com.codahale.metrics.MetricRegistry]
   - imports: [io.dropwizard.metrics]
 order: 15
 postchecks:

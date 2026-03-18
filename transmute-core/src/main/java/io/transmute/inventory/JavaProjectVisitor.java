@@ -72,14 +72,23 @@ public class JavaProjectVisitor extends JavaIsoVisitor<ProjectInventory> {
                 fc.className = cls.getFullyQualifiedName();
                 // Collect extends / implements
                 if (cls.getSupertype() != null) {
-                    fc.superTypes.add(cls.getSupertype().getFullyQualifiedName());
+                    addResolvedSuperType(cls.getSupertype().getFullyQualifiedName(), fc);
                 }
                 for (var iface : cls.getInterfaces()) {
-                    fc.superTypes.add(iface.getFullyQualifiedName());
+                    addResolvedSuperType(iface.getFullyQualifiedName(), fc);
                 }
             } else if (classDecl.getSimpleName() != null) {
                 // Fallback: use simple name from source path
                 fc.className = classDecl.getSimpleName();
+            }
+            // Fallback: resolve extends/implements from AST when type info is incomplete
+            if (classDecl.getExtends() != null) {
+                resolveTypeRefToSuperType(classDecl.getExtends(), fc);
+            }
+            if (classDecl.getImplements() != null) {
+                for (var impl : classDecl.getImplements()) {
+                    resolveTypeRefToSuperType(impl, fc);
+                }
             }
 
             // Collect annotation FQNs
@@ -112,6 +121,47 @@ public class JavaProjectVisitor extends JavaIsoVisitor<ProjectInventory> {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Adds a superType FQN, resolving unqualified names from imports if needed.
+     */
+    private void addResolvedSuperType(String fqn, FileContext fc) {
+        if (fqn != null && !fqn.isEmpty()) {
+            if (fqn.contains(".")) {
+                fc.superTypes.add(fqn);
+            } else {
+                // Unresolved simple name — try to resolve from imports
+                var resolved = resolveSimpleNameFromImports(fqn, fc);
+                fc.superTypes.add(resolved);
+            }
+        }
+    }
+
+    /**
+     * Resolves a type reference (extends/implements clause) to a FQN using imports.
+     * Only adds if not already present (avoids duplicating resolved types).
+     */
+    private void resolveTypeRefToSuperType(org.openrewrite.java.tree.TypeTree typeRef, FileContext fc) {
+        String simpleName = null;
+        if (typeRef instanceof J.ParameterizedType pt) {
+            if (pt.getClazz() instanceof J.Identifier id) {
+                simpleName = id.getSimpleName();
+            }
+        } else if (typeRef instanceof J.Identifier id) {
+            simpleName = id.getSimpleName();
+        }
+        if (simpleName != null) {
+            var resolved = resolveSimpleNameFromImports(simpleName, fc);
+            fc.superTypes.add(resolved);
+        }
+    }
+
+    private String resolveSimpleNameFromImports(String simpleName, FileContext fc) {
+        return fc.imports.stream()
+                .filter(i -> i.endsWith("." + simpleName))
+                .findFirst()
+                .orElse(simpleName);
+    }
 
     private void resolveAnnotationType(J.Annotation annotation, FileContext fc) {
         var type = annotation.getType();

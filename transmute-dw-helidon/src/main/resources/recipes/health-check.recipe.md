@@ -3,9 +3,7 @@ name: HealthCheck Migration
 type: recipe
 triggers:
   - imports: [com.codahale.metrics.health.HealthCheck]
-    superTypes: [com.codahale.metrics.health.HealthCheck]
   - imports: [io.dropwizard.health.HealthCheck]
-    superTypes: [io.dropwizard.health.HealthCheck]
 order: 20
 postchecks:
   forbidImports:

@@ -10,6 +10,7 @@ import io.transmute.agent.ModelFactory;
 import io.transmute.agent.agent.FixCompileErrorsAgent;
 import io.transmute.agent.agent.FixTestFailuresAgent;
 import io.transmute.agent.agent.ProjectAnalysisAgent;
+import io.transmute.agent.agent.ReconciliationAgent;
 import io.transmute.inventory.JavaFileInfo;
 import io.transmute.catalog.MarkdownMigrationLoader;
 import io.transmute.catalog.MigrationPlan;
