@@ -157,7 +157,7 @@ public class MarkdownMigrationLoader {
      * Checks that no two features claim the same annotation or type FQN.
      * Recipes are exempt — they are exclusive by class-type matching.
      */
-    private void checkFeatureConflicts(List<AiMigration> aiMigrations) {
+    void checkFeatureConflicts(List<AiMigration> aiMigrations) {
         var annotationOwners = new HashMap<String, List<String>>();
         var typeOwners = new HashMap<String, List<String>>();
 

@@ -192,13 +192,29 @@ class MarkdownMigrationLoaderTest {
         assertEquals(List.of("deprecated\\("), pc.forbidPatterns());
     }
 
-    // ── 10. Feature conflict detection via load() ─────────────────────────────
+    // ── 10. Feature conflict detection ───────────────────────────────────────
 
     @Test
-    void featureConflictDetectedOnLoad() {
-        // conflict-alpha.feature.md and conflict-beta.feature.md are in
-        // src/test/resources/features/ and both claim com.example.SharedAnnotation.
-        assertThrows(FeatureConflictException.class, () -> loader.load());
+    void featureConflictDetectedWhenTwoFeaturesClaimSameAnnotation() {
+        var alpha = loader.parse("features/alpha.feature.md", md("""
+                name: Conflict Alpha
+                type: feature
+                transforms:
+                  annotations:
+                    - com.example.SharedAnnotation
+                """, "Alpha body."));
+        var beta = loader.parse("features/beta.feature.md", md("""
+                name: Conflict Beta
+                type: feature
+                transforms:
+                  annotations:
+                    - com.example.SharedAnnotation
+                """, "Beta body."));
+
+        assertNotNull(alpha);
+        assertNotNull(beta);
+        assertThrows(FeatureConflictException.class,
+                () -> loader.checkFeatureConflicts(List.of(alpha, beta)));
     }
 
     // ── 11. Order defaults to 50 when not specified ───────────────────────────
