@@ -78,18 +78,19 @@ public record TransmuteConfig(
      * </pre>
      */
     public static TransmuteConfig fromArgs(String[] args) {
+        var d = defaults();
         String projectDir = null;
         String outputDir = null;
-        String modelProvider = env("TRANSMUTE_MODEL_PROVIDER", "oci-genai");
-        String modelId = env("TRANSMUTE_MODEL_ID", null);
-        String apiKey = env("TRANSMUTE_API_KEY", null);
-        String baseUrl = env("TRANSMUTE_MODEL_BASE_URL", null);
-        Integer modelTimeoutSeconds = envInt("TRANSMUTE_MODEL_TIMEOUT_SECONDS", null);
-        boolean forceHttp1 = envBool("TRANSMUTE_FORCE_HTTP1", false);
-        String ociProfile = env("OCI_PROFILE", "DEFAULT");
-        boolean autoApprove = envBool("TRANSMUTE_AUTO_APPROVE", false);
-        boolean verbose = envBool("TRANSMUTE_VERBOSE", false);
-        boolean dryRun = envBool("TRANSMUTE_DRY_RUN", false);
+        String modelProvider = d.modelProvider();
+        String modelId = d.modelId();
+        String apiKey = d.apiKey();
+        String baseUrl = d.baseUrl();
+        Integer modelTimeoutSeconds = d.modelTimeoutSeconds();
+        boolean forceHttp1 = d.forceHttp1();
+        String ociProfile = d.ociProfile();
+        boolean autoApprove = d.autoApprove();
+        boolean verbose = d.verbose();
+        boolean dryRun = d.dryRun();
         var activeProfiles = new java.util.ArrayList<String>();
 
         for (int i = 0; i < args.length; i++) {
@@ -101,7 +102,7 @@ public record TransmuteConfig(
                 case "--api-key"             -> { if (i + 1 < args.length) apiKey = args[++i]; }
                 case "--base-url"            -> { if (i + 1 < args.length) baseUrl = args[++i]; }
                 case "--model-timeout-seconds" -> {
-                    if (i + 1 < args.length) modelTimeoutSeconds = parseIntOrNull(args[++i]);
+                    if (i + 1 < args.length) modelTimeoutSeconds = parseIntOrDefault(args[++i], null);
                 }
                 case "--force-http1"         -> forceHttp1 = true;
                 case "--oci-profile"         -> { if (i + 1 < args.length) ociProfile = args[++i]; }
@@ -139,10 +140,6 @@ public record TransmuteConfig(
 
     private static Integer envInt(String name, Integer defaultValue) {
         return parseIntOrDefault(System.getenv(name), defaultValue);
-    }
-
-    private static Integer parseIntOrNull(String value) {
-        return parseIntOrDefault(value, null);
     }
 
     private static Integer parseIntOrDefault(String value, Integer defaultValue) {
