@@ -96,14 +96,10 @@ public class ModelFactory {
         if (trimmed.endsWith("/v1") || trimmed.contains("/v1/")) {
             return trimmed;
         }
-        try {
-            var uri = java.net.URI.create(trimmed);
-            var path = uri.getPath();
-            if (path == null || path.isBlank() || "/".equals(path)) {
-                return trimmed.endsWith("/") ? trimmed + "v1" : trimmed + "/v1";
-            }
-        } catch (IllegalArgumentException ignored) {
-            // If it's not a valid URI, leave it as-is and let the client surface the error.
+        var uri = java.net.URI.create(trimmed);
+        var path = uri.getPath();
+        if (path == null || path.isBlank() || "/".equals(path)) {
+            return trimmed.endsWith("/") ? trimmed + "v1" : trimmed + "/v1";
         }
         return trimmed;
     }

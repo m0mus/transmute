@@ -109,7 +109,7 @@ public class MigrationWorkflow {
 
     private void scanInventory() {
         Con.step(2, TOTAL_STEPS, "Scanning project inventory");
-        inventory = scanProject(config.projectDir());
+        inventory = new io.transmute.inventory.JavaProjectScanner().scan(config.projectDir());
         Con.info("Scanned " + Con.bold(inventory.getJavaFiles().size() + " Java files"));
         Con.rule();
     }
@@ -510,32 +510,6 @@ public class MigrationWorkflow {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private ProjectInventory scanProject(String sourceDir) {
-        var visitor = new io.transmute.inventory.JavaProjectVisitor();
-        var inv = visitor.getInitialValue();
-        inv.setRootDir(sourceDir);
-        inv.setProject(Path.of(sourceDir).getFileName().toString());
-        try {
-            var parser = org.openrewrite.java.JavaParser.fromJavaVersion()
-                    .logCompilationWarningsAndErrors(false)
-                    .build();
-            var sourceRoot = Path.of(sourceDir);
-            try (var walk = Files.walk(sourceRoot)) {
-                var javaFiles = walk.filter(p -> p.toString().endsWith(".java")).toList();
-                if (!javaFiles.isEmpty()) {
-                    var ctx = new org.openrewrite.InMemoryExecutionContext(e -> inv.addError(e.getMessage()));
-                    var sources = parser.parse(javaFiles, sourceRoot, ctx).toList();
-                    for (var source : sources) {
-                        visitor.visit(source, inv);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            inv.addWarning("Inventory scan error: " + e.getMessage());
-        }
-        return inv;
-    }
 
     private String readUserInput(String prompt) {
         System.out.print(prompt);
