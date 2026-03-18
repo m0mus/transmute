@@ -125,32 +125,51 @@ public class FileOperationsTool {
         }
         var a = before.split("\\R", -1);
         var b = after.split("\\R", -1);
-        int prefix = 0;
-        while (prefix < a.length && prefix < b.length && a[prefix].equals(b[prefix])) {
-            prefix++;
-        }
-        int suffix = 0;
-        while (suffix < a.length - prefix
-                && suffix < b.length - prefix
-                && a[a.length - 1 - suffix].equals(b[b.length - 1 - suffix])) {
-            suffix++;
-        }
-        int aStart = prefix;
-        int aEnd = a.length - 1 - suffix;
-        int bStart = prefix;
-        int bEnd = b.length - 1 - suffix;
-        int aChanged = Math.max(0, aEnd - aStart + 1);
-        int bChanged = Math.max(0, bEnd - bStart + 1);
 
+        // Build a unified-diff-style output by scanning for changed hunks.
+        // Use a simple O(n) scan: mark each line as changed or unchanged,
+        // then group adjacent changes into hunks with 2-line context.
+        int n = Math.max(a.length, b.length);
+        // LCS-based matching is expensive; use line-equality scan on the shorter dimension.
+        // Produce hunks: collect pairs (aLine, bLine) that differ.
         var sb = new StringBuilder();
-        sb.append("lines ").append(a.length).append("->").append(b.length)
-                .append(" changed ").append(aChanged).append("->").append(bChanged)
-                .append("; ");
-        sb.append("diff ");
-        sb.append(snippet(a, aStart, aEnd, "-", 4));
-        sb.append(snippet(b, bStart, bEnd, "+", 4));
+        sb.append("lines ").append(a.length).append("->").append(b.length).append("\n");
+
+        // Walk both arrays simultaneously, emitting hunks of differing lines.
+        int ai = 0, bi = 0;
+        int CONTEXT = 2;
+        int lastHunkEnd = -1;
+        while (ai < a.length || bi < b.length) {
+            if (ai < a.length && bi < b.length && a[ai].equals(b[bi])) {
+                ai++; bi++;
+                continue;
+            }
+            // Found a difference — collect the hunk
+            int hunkAStart = ai, hunkBStart = bi;
+            // Advance until lines agree again (up to 8 lines lookahead)
+            int lookahead = 8;
+            while ((ai < a.length || bi < b.length) && lookahead-- > 0) {
+                if (ai < a.length && bi < b.length && a[ai].equals(b[bi])) break;
+                if (ai < a.length) ai++;
+                if (bi < b.length) bi++;
+            }
+            // Print context before hunk
+            if (sb.length() > 50 && hunkAStart > lastHunkEnd + 1) {
+                sb.append("  ...\n");
+            }
+            for (int i = Math.max(0, hunkAStart - CONTEXT); i < hunkAStart; i++) {
+                sb.append("   ").append(a[i]).append("\n");
+            }
+            for (int i = hunkAStart; i < ai && i < a.length; i++) {
+                sb.append("  -").append(a[i]).append("\n");
+            }
+            for (int i = hunkBStart; i < bi && i < b.length; i++) {
+                sb.append("  +").append(b[i]).append("\n");
+            }
+            lastHunkEnd = ai;
+        }
         var summary = sb.toString().replace("\r", "");
-        return summary.length() > 600 ? summary.substring(0, 600) + "...": summary;
+        return summary.length() > 2000 ? summary.substring(0, 2000) + "\n  ..." : summary;
     }
 
     private int lineCount(String text) {
@@ -160,58 +179,34 @@ public class FileOperationsTool {
         return text.split("\\R", -1).length;
     }
 
-    private String snippet(String[] lines, int start, int end, String prefix, int maxLines) {
-        if (start < 0 || end < start || start >= lines.length) {
-            return "";
-        }
-        int count = Math.min(maxLines, end - start + 1);
-        var sb = new StringBuilder();
-        for (int i = 0; i < count; i++) {
-            sb.append(prefix).append(lines[start + i]).append("\n");
-        }
-        return sb.toString();
-    }
-
     private String formatDiffBlock(String filePath, String diffSummary, boolean ansi) {
-        final String reset = ansi ? Ansi.RESET  : "";
-        final String dim   = ansi ? Ansi.DIM    : "";
-        final String red   = ansi ? Ansi.RED    : "";
-        final String green = ansi ? Ansi.GREEN  : "";
-        final String cyan  = ansi ? Ansi.CYAN   : "";
+        final String reset = ansi ? Ansi.RESET : "";
+        final String dim   = ansi ? Ansi.DIM   : "";
+        final String red   = ansi ? Ansi.RED   : "";
+        final String green = ansi ? Ansi.GREEN : "";
+        final String cyan  = ansi ? Ansi.CYAN  : "";
 
         var sb = new StringBuilder();
         sb.append(cyan).append("[diff] ").append(filePath).append(reset).append("\n");
-        if (diffSummary == null || diffSummary.isBlank()) {
-            sb.append("  ").append(dim).append("no details").append(reset).append("\n");
+        if (diffSummary == null || diffSummary.isBlank() || diffSummary.equals("no change")) {
+            sb.append("  ").append(dim).append(diffSummary == null ? "no details" : diffSummary).append(reset).append("\n");
             return sb.toString();
         }
         if (diffSummary.startsWith("new file")) {
             sb.append("  ").append(dim).append(diffSummary).append(reset).append("\n");
             return sb.toString();
         }
-        if (diffSummary.equals("no change")) {
-            sb.append("  ").append(dim).append("no change").append(reset).append("\n");
-            return sb.toString();
+        for (var line : diffSummary.split("\\n")) {
+            if (line.isBlank()) continue;
+            String stripped = line.stripLeading();
+            char lead = stripped.isEmpty() ? ' ' : stripped.charAt(0);
+            String color = switch (lead) {
+                case '-' -> red;
+                case '+' -> green;
+                default  -> dim;
+            };
+            sb.append(color).append(line).append(reset).append("\n");
         }
-        int diffIdx = diffSummary.indexOf("diff ");
-        if (diffIdx > 0) {
-            String meta = diffSummary.substring(0, diffIdx).trim();
-            String body = diffSummary.substring(diffIdx + 5);
-            sb.append("  ").append(dim).append(meta).append(reset).append("\n");
-            for (var line : body.split("\\n")) {
-                if (!line.isBlank()) {
-                    char lead = line.charAt(0);
-                    String color = switch (lead) {
-                        case '-' -> red;
-                        case '+' -> green;
-                        default -> "";
-                    };
-                    sb.append("  ").append(color).append(line).append(reset).append("\n");
-                }
-            }
-            return sb.toString();
-        }
-        sb.append("  ").append(dim).append(diffSummary).append(reset).append("\n");
         return sb.toString();
     }
 }
