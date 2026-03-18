@@ -112,7 +112,5 @@ Add required Helidon imports:
 ## DO NOT touch
 
 Do NOT modify anything related to:
-- `@Inject`, `@Named`, Guice `Injector` or `Module` — handled by the Injection feature skill.
-- `@Timed`, `@Metered`, `MetricRegistry` — handled by the Metrics feature skill.
-- `@Auth`, `SecurityContext` — handled by the Security feature skill.
-- `@UnitOfWork` — handled by the Persistence feature skill.
+- `@Inject`, `@Named`, Guice `Injector` or `Module` — handled by the Injection feature.
+- `@Timed`, `@Metered`, `MetricRegistry` — handled by the Metrics Migration recipe.

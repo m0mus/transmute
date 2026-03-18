@@ -4,6 +4,13 @@ type: recipe
 order: 2
 triggers:
   - superTypes: [io.dropwizard.Application, io.dropwizard.core.Application]
+postchecks:
+  forbidImports:
+    - io.dropwizard.Application
+    - io.dropwizard.core.Application
+    - io.dropwizard.Bootstrap
+    - io.dropwizard.setup.Bootstrap
+    - io.dropwizard.setup.Environment
 ---
 
 This file is the Dropwizard `Application<T>` class. Rewrite it as a Helidon 4 SE `Main` class.

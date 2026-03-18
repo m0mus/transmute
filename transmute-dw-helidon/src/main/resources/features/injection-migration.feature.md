@@ -5,11 +5,15 @@ triggers:
   - imports: [com.google.inject]
   - imports: [org.glassfish.hk2]
   - imports: [org.jvnet.hk2]
+  - imports: [javax.inject]
+  - imports: [jakarta.inject]
 postchecks:
   forbidImports:
     - com.google.inject
     - org.glassfish.hk2
     - org.jvnet.hk2
+    - javax.inject
+    - jakarta.inject
 ---
 
 This file uses Guice or HK2 dependency injection. Migrate all injection annotations and
