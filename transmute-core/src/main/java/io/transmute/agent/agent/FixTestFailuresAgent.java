@@ -15,6 +15,9 @@ public interface FixTestFailuresAgent {
         Fix test failures in the migrated project at {{outputDir}}.
         Test output: {{testOutput}}
 
+        ## Project Context
+        {{projectSummary}}
+
         ## Migration Journal (context from earlier migration steps)
         {{journalContext}}
 
@@ -24,5 +27,6 @@ public interface FixTestFailuresAgent {
         """)
     String fix(@V("outputDir") String outputDir,
                @V("testOutput") String testOutput,
+               @V("projectSummary") String projectSummary,
                @V("journalContext") String journalContext);
 }

@@ -259,7 +259,7 @@ public class MigrationWorkflow {
                 throw new RuntimeException("Compile failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking compile-fix agent…" + Con.RESET);
-            buildCompileFixAgent().fix(config.outputDir(), result.errors(), readJournal());
+            buildCompileFixAgent().fix(config.outputDir(), result.errors(), projectSummary, readJournal());
         }
         Con.rule();
     }
@@ -280,7 +280,7 @@ public class MigrationWorkflow {
                 throw new RuntimeException("Tests failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking test-fix agent…" + Con.RESET);
-            buildTestFixAgent().fix(config.outputDir(), result.output(), readJournal());
+            buildTestFixAgent().fix(config.outputDir(), result.output(), projectSummary, readJournal());
         }
         Con.rule();
     }

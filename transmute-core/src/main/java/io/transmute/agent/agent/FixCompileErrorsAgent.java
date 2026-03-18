@@ -15,6 +15,9 @@ public interface FixCompileErrorsAgent {
         Fix compilation errors in the migrated project at {{outputDir}}.
         Errors: {{compileErrors}}
 
+        ## Project Context
+        {{projectSummary}}
+
         ## Migration Journal (context from earlier migration steps)
         {{journalContext}}
 
@@ -23,5 +26,6 @@ public interface FixCompileErrorsAgent {
         """)
     String fix(@V("outputDir") String outputDir,
                @V("compileErrors") String errors,
+               @V("projectSummary") String projectSummary,
                @V("journalContext") String journalContext);
 }
