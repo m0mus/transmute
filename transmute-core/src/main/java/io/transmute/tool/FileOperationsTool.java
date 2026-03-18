@@ -173,11 +173,11 @@ public class FileOperationsTool {
     }
 
     private String formatDiffBlock(String filePath, String diffSummary, boolean ansi) {
-        final String reset = ansi ? "\u001B[0m" : "";
-        final String dim = ansi ? "\u001B[2m" : "";
-        final String red = ansi ? "\u001B[31m" : "";
-        final String green = ansi ? "\u001B[32m" : "";
-        final String cyan = ansi ? "\u001B[36m" : "";
+        final String reset = ansi ? Ansi.RESET  : "";
+        final String dim   = ansi ? Ansi.DIM    : "";
+        final String red   = ansi ? Ansi.RED    : "";
+        final String green = ansi ? Ansi.GREEN  : "";
+        final String cyan  = ansi ? Ansi.CYAN   : "";
 
         var sb = new StringBuilder();
         sb.append(cyan).append("[diff] ").append(filePath).append(reset).append("\n");

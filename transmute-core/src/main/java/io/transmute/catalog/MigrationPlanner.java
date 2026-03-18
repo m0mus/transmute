@@ -32,7 +32,7 @@ public class MigrationPlanner {
         // 1. Filter to triggered migrations
         var triggered = new ArrayList<Migration>();
         for (var migration : migrations) {
-            if (isTriggered(migration, inventory, compileErrors)) {
+            if (isMigrationTriggered(migration, inventory, compileErrors)) {
                 triggered.add(migration);
             }
         }
@@ -60,53 +60,24 @@ public class MigrationPlanner {
 
     // ── Trigger evaluation ────────────────────────────────────────────────────
 
-    private boolean isTriggered(Migration migration, ProjectInventory inventory, List<String> compileErrors) {
+    private boolean isMigrationTriggered(Migration migration, ProjectInventory inventory, List<String> compileErrors) {
         var sm = (AiMigrationMetadata) migration;
         var triggers = sm.skillTriggers();
         if (triggers.isEmpty()) {
             return true;
         }
         for (var trigger : triggers) {
-            if (markdownTriggerFires(trigger, inventory, compileErrors)) {
+            if (!triggerPreconditionsSatisfied(trigger, inventory, compileErrors)) {
+                continue;
+            }
+            if (!hasJavaFileConditions(trigger)) {
+                return true;
+            }
+            if (inventory.getJavaFiles().stream().anyMatch(file -> fileMatchesTrigger(file, trigger))) {
                 return true;
             }
         }
         return false;
-    }
-
-    private boolean markdownTriggerFires(
-            MarkdownTrigger trigger,
-            ProjectInventory inventory,
-            List<String> compileErrors) {
-
-        // signals[]: all must be present
-        for (var signal : trigger.signals()) {
-            if (!inventory.getSignals().contains(signal)) {
-                return false;
-            }
-        }
-        // files[]: at least one must exist in project root
-        if (!trigger.files().isEmpty()) {
-            var root = inventory.getRootDir() != null
-                    ? Path.of(inventory.getRootDir()).toAbsolutePath().normalize()
-                    : Path.of(".").toAbsolutePath().normalize();
-            boolean anyPresent = trigger.files().stream().anyMatch(f -> root.resolve(f).toFile().exists());
-            if (!anyPresent) {
-                return false;
-            }
-        }
-        // compileErrors[]: all patterns must match at least one error
-        for (var regex : trigger.compileErrors()) {
-            var pattern = Pattern.compile(regex);
-            if (compileErrors.stream().noneMatch(e -> pattern.matcher(e).find())) {
-                return false;
-            }
-        }
-        // File-level conditions — at least one Java file must match
-        if (trigger.imports().isEmpty() && trigger.annotations().isEmpty() && trigger.superTypes().isEmpty()) {
-            return true;
-        }
-        return inventory.getJavaFiles().stream().anyMatch(file -> fileMatchesTrigger(file, trigger));
     }
 
     private boolean fileMatchesTrigger(JavaFileInfo file, MarkdownTrigger trigger) {

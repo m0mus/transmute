@@ -9,7 +9,7 @@ import io.transmute.agent.TransmuteConfig;
 import io.transmute.agent.ModelFactory;
 import io.transmute.agent.agent.FixCompileErrorsAgent;
 import io.transmute.agent.agent.FixTestFailuresAgent;
-import io.transmute.catalog.MigrationDiscovery;
+import io.transmute.catalog.MarkdownMigrationLoader;
 import io.transmute.catalog.MigrationPlan;
 import io.transmute.catalog.MigrationPlanner;
 import io.transmute.inventory.ProjectInventory;
@@ -20,6 +20,7 @@ import io.transmute.migration.MigrationResult;
 import io.transmute.migration.MigrationScope;
 import io.transmute.migration.Workspace;
 import io.transmute.migration.postcheck.PostcheckRunner;
+import io.transmute.tool.Ansi;
 import io.transmute.tool.CompileProjectTool;
 import io.transmute.tool.CopyProjectTool;
 import io.transmute.tool.FileOperationsTool;
@@ -115,7 +116,7 @@ public class MigrationWorkflow {
 
     private void discoverMigrations() {
         Con.step(3, TOTAL_STEPS, "Discovering migrations");
-        migrations = new MigrationDiscovery().discover().migrations();
+        migrations = List.copyOf(new MarkdownMigrationLoader().load());
         Con.info("Found " + Con.bold(migrations.size() + " migrations"));
         Con.rule();
     }
@@ -467,13 +468,13 @@ public class MigrationWorkflow {
 
     /** ANSI-colored console helpers. */
     private static final class Con {
-        static final String RESET  = "\u001B[0m";
-        static final String BOLD   = "\u001B[1m";
-        static final String DIM    = "\u001B[2m";
-        static final String CYAN   = "\u001B[36m";
-        static final String GREEN  = "\u001B[32m";
-        static final String RED    = "\u001B[31m";
-        static final String YELLOW = "\u001B[33m";
+        static final String RESET  = Ansi.RESET;
+        static final String BOLD   = Ansi.BOLD;
+        static final String DIM    = Ansi.DIM;
+        static final String CYAN   = Ansi.CYAN;
+        static final String GREEN  = Ansi.GREEN;
+        static final String RED    = Ansi.RED;
+        static final String YELLOW = Ansi.YELLOW;
 
         private static final String RULE_STR = DIM + "─".repeat(80) + RESET;
 

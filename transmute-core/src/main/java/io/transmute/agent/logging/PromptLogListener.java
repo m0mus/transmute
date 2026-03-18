@@ -1,5 +1,6 @@
 package io.transmute.agent.logging;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.model.chat.listener.ChatModelListener;
 import dev.langchain4j.model.chat.listener.ChatModelRequestContext;
 import dev.langchain4j.model.chat.listener.ChatModelResponseContext;
@@ -18,6 +19,7 @@ public class PromptLogListener implements ChatModelListener {
 
     private static final int MAX_CHARS = 8000;
     private static final Path LOG_PATH = Path.of("logs", "ai-prompts.jsonl");
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public static boolean enabled() {
         var sys = System.getProperty("transmute.logPrompts");
@@ -78,17 +80,11 @@ public class PromptLogListener implements ChatModelListener {
     }
 
     private String toJsonLine(Map<String, String> payload) {
-        var sb = new StringBuilder();
-        sb.append("{");
-        var first = true;
-        for (var entry : payload.entrySet()) {
-            if (!first) sb.append(",");
-            first = false;
-            sb.append("\"").append(escape(entry.getKey())).append("\":");
-            sb.append("\"").append(escape(entry.getValue())).append("\"");
+        try {
+            return MAPPER.writeValueAsString(payload) + "\n";
+        } catch (Exception e) {
+            return "{\"error\":\"serialization failed\"}\n";
         }
-        sb.append("}\n");
-        return sb.toString();
     }
 
     private String safe(String value) {
@@ -103,14 +99,6 @@ public class PromptLogListener implements ChatModelListener {
 
     private String redact(String value) {
         return value.replaceAll("(?i)(api[_-]?key\\s*[:=]\\s*)([^\\s,\\\"]+)", "$1***");
-    }
-
-    private String escape(String value) {
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 
     private static boolean isTruthy(String value) {

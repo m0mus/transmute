@@ -5,29 +5,7 @@ import java.nio.file.Path;
 /**
  * Describes the input/output directory layout for a migration run.
  */
-public class Workspace {
-
-    private final String outputDir;
-    private final String sourceDir;
-    private final boolean dryRun;
-
-    public Workspace(String sourceDir, String outputDir, boolean dryRun) {
-        this.sourceDir = sourceDir;
-        this.outputDir = outputDir;
-        this.dryRun = dryRun;
-    }
-
-    public String outputDir() {
-        return outputDir;
-    }
-
-    public String sourceDir() {
-        return sourceDir;
-    }
-
-    public boolean isDryRun() {
-        return dryRun;
-    }
+public record Workspace(String sourceDir, String outputDir, boolean dryRun) {
 
     /**
      * Maps an output-directory file path back to the corresponding source path.

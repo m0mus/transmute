@@ -4,13 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Runs Maven tests on the output project to verify test success.
@@ -43,44 +39,22 @@ public class RunTestsTool {
 
     public TestResult runMvnTest(String outputDir) {
         try {
-            var isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-            var cmd = buildCommand(isWindows, "test");
-
+            var goals = buildGoals("test");
             ToolLog.log("run_tests " + outputDir);
-            var pb = new ProcessBuilder(cmd)
-                    .directory(Path.of(outputDir).toFile())
-                    .redirectErrorStream(true);
-
-            var process = pb.start();
-            String output;
-            try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                output = reader.lines().collect(Collectors.joining("\n"));
-            }
-
-            var exitCode = process.waitFor();
-            return new TestResult(exitCode == 0, output);
+            var result = MavenRunner.runWithExitCode(Path.of(outputDir), goals, false);
+            return new TestResult(result.success(), result.output());
         } catch (Exception e) {
             return new TestResult(false, "Failed to run mvn test: " + e.getMessage());
         }
     }
 
-    private List<String> buildCommand(boolean isWindows, String... goals) {
-        var cmd = new ArrayList<String>();
-        if (isWindows) {
-            cmd.add("cmd");
-            cmd.add("/c");
-            cmd.add("mvn");
-        } else {
-            cmd.add("mvn");
-        }
-        for (var goal : goals) {
-            cmd.add(goal);
-        }
+    private List<String> buildGoals(String... goals) {
+        var list = new java.util.ArrayList<String>(List.of(goals));
         if (!activeProfiles.isEmpty()) {
-            cmd.add("-P");
-            cmd.add(String.join(",", activeProfiles));
+            list.add("-P");
+            list.add(String.join(",", activeProfiles));
         }
-        return cmd;
+        return list;
     }
 
     private String toJson(Object payload) {
