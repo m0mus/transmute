@@ -383,7 +383,7 @@ is not set:
 
 ```powershell
 $env:TRANSMUTE_API_KEY = "sk-..."
-mvn clean test --also-make -pl transmute-dw-helidon "-Dsurefire.failIfNoSpecifiedTests=false"
+mvn clean test --also-make -pl transmute-dw-helidon -Pit
 ```
 
 Fixture files are in `src/test/resources/fixtures/`. The test harness (`RecipeTestHarness`)

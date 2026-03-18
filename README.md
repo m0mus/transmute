@@ -99,17 +99,16 @@ Set `TRANSMUTE_API_KEY` (and optionally `TRANSMUTE_MODEL_PROVIDER`) then run:
 
 **Linux / macOS**
 ```bash
-TRANSMUTE_API_KEY=sk-... mvn clean test --also-make -pl transmute-dw-helidon \
-  -Dsurefire.failIfNoSpecifiedTests=false
+TRANSMUTE_API_KEY=sk-... mvn clean test --also-make -pl transmute-dw-helidon -Pit
 ```
 
 **Windows (PowerShell)**
 ```powershell
 $env:TRANSMUTE_API_KEY = "sk-..."
-mvn clean test --also-make -pl transmute-dw-helidon "-Dsurefire.failIfNoSpecifiedTests=false"
+mvn clean test --also-make -pl transmute-dw-helidon -Pit
 ```
 
-Tests are skipped automatically when `TRANSMUTE_API_KEY` is not set.
+IT tests only run with the `-Pit` profile. Without it, `mvn test` skips them entirely.
 
 ---
 
