@@ -37,8 +37,9 @@ Transmute/
                             recipes and features for Dropwizard 3 → Helidon 4 SE
 ```
 
-`transmute-dw-helidon` depends on nothing and is assembled with `transmute-core` at runtime
-by placing both JARs on the classpath. The same pattern applies to any migration module.
+`transmute-dw-helidon` has no production dependencies and is assembled with `transmute-core`
+at runtime by placing both JARs on the classpath. It depends on `transmute-core` in test
+scope only, for recipe integration tests. The same pattern applies to any migration module.
 
 ---
 
@@ -193,12 +194,11 @@ io.transmute.migration/
     PostcheckResult.java      Pass/fail with description
 
 io.transmute.catalog/
-  MigrationDiscovery.java     Loads *.recipe.md / *.feature.md from classpath
   MigrationPlanner.java       Evaluates triggers; builds sorted, scoped MigrationPlan
   MigrationPlan.java          Ordered list of MigrationExecutionEntry (migration + targetFiles + confidence)
   MarkdownMigrationLoader.java Scans classpath for markdown migrations; parses front-matter
   RecipeFrontMatter.java      Jackson-mapped front-matter record
-  MigrationConfidence.java    Enum: HIGH | MEDIUM | LOW
+  MigrationConfidence.java    Enum: LOW (all AI-driven migrations are LOW confidence)
   FeatureConflictException.java Thrown on overlapping feature transform ownership
 
 io.transmute.inventory/

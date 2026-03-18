@@ -303,8 +303,8 @@ Triggered on files importing from `com.google.inject`, `org.glassfish.hk2`, `org
 
 `features/unit-of-work.feature.md`
 
-Triggered on files importing from `io.dropwizard.hibernate` (with `@UnitOfWork` annotation)
-or from `io.dropwizard.db`. Postchecks: forbids those imports.
+Triggered on files importing from `io.dropwizard.hibernate` or `io.dropwizard.db`.
+Postchecks: forbids those imports.
 
 Replaces `@UnitOfWork`, `AbstractDAO<T>`, `HibernateBundle`, `DBIFactory`/`JdbiFactory`,
 and `SessionFactory` usages with `DW_MIGRATION_TODO` comments pointing to the Helidon
@@ -320,9 +320,29 @@ Triggered on files importing from `io.dropwizard.auth` or using `@io.dropwizard.
 Postchecks: forbids `io.dropwizard.auth` imports.
 
 Replaces `@Auth` parameters, `Authenticator<C,P>`, `Authorizer<P>`, and `UnauthorizedHandler`
-implementations with `DW_MIGRATION_TODO` comments pointing to Helidon Security. Preserves
-`authenticate()` / `authorize()` method bodies intact for developer reference. Does not add
+implementations with `DW_MIGRATION_TODO` comments pointing to Helidon Security. The original
+`authenticate()` / `authorize()` methods are wrapped in a block comment for developer
+reference so that all `io.dropwizard.auth.*` imports can be cleanly removed. Does not add
 Helidon Security imports automatically.
+
+---
+
+## Integration tests
+
+Recipe integration tests apply each migration to real Dropwizard source files from the
+[dropwizard-example](https://github.com/dropwizard/dropwizard/tree/master/dropwizard-example)
+project and verify postchecks pass.
+
+Tests require a real AI model and are skipped automatically when `TRANSMUTE_API_KEY`
+is not set:
+
+```powershell
+$env:TRANSMUTE_API_KEY = "sk-..."
+mvn clean test --also-make -pl transmute-dw-helidon "-Dsurefire.failIfNoSpecifiedTests=false"
+```
+
+Fixture files are in `src/test/resources/fixtures/`. The test harness (`RecipeTestHarness`)
+loads recipes from the module's own classpath, so it always tests the current recipe files.
 
 ---
 

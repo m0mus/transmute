@@ -58,9 +58,10 @@ Transmute/
   transmute-dw-helidon/ Pure markdown: recipes and features for Dropwizard 3 → Helidon 4 SE
 ```
 
-`transmute-dw-helidon` contains **zero Java** — only `.recipe.md` and `.feature.md` resource
-files. It has no Maven dependencies. Migration modules are assembled at runtime by placing
-the two JARs on the classpath together.
+`transmute-dw-helidon` contains **zero production Java** — only `.recipe.md` and
+`.feature.md` resource files. It depends on `transmute-core` for test-scope integration
+tests only. Migration modules are assembled at runtime by placing the two JARs on the
+classpath together.
 
 ### Key packages in transmute-core
 
@@ -90,6 +91,25 @@ mvn clean package -DskipTests
 
 Both modules (`transmute-core`, `transmute-dw-helidon`) are built in a single reactor
 invocation.
+
+## Running integration tests
+
+Recipe integration tests live in `transmute-dw-helidon` and require a real AI model.
+Set `TRANSMUTE_API_KEY` (and optionally `TRANSMUTE_MODEL_PROVIDER`) then run:
+
+**Linux / macOS**
+```bash
+TRANSMUTE_API_KEY=sk-... mvn clean test --also-make -pl transmute-dw-helidon \
+  -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+**Windows (PowerShell)**
+```powershell
+$env:TRANSMUTE_API_KEY = "sk-..."
+mvn clean test --also-make -pl transmute-dw-helidon "-Dsurefire.failIfNoSpecifiedTests=false"
+```
+
+Tests are skipped automatically when `TRANSMUTE_API_KEY` is not set.
 
 ---
 
