@@ -81,15 +81,18 @@ Replace `javax.ws.rs.core.Response` / `jakarta.ws.rs.core.Response` return types
 
 ## @Produces / @Consumes
 
+**IMPORTANT:** Helidon's `@Http.Produces` and `@Http.Consumes` target METHOD only, not TYPE.
+If the original `@Produces`/`@Consumes` is on the class, move it to each individual HTTP method.
+
 Replace JAX-RS `@Produces` and `@Consumes` annotations with their Helidon equivalents:
 
 | Remove | Add |
 |--------|-----|
-| `@Produces(MediaType.APPLICATION_JSON)` | `@Http.Produces(io.helidon.common.media.type.MediaTypes.APPLICATION_JSON_VALUE)` |
-| `@Consumes(MediaType.APPLICATION_JSON)` | `@Http.Consumes(io.helidon.common.media.type.MediaTypes.APPLICATION_JSON_VALUE)` |
-| `@Produces(MediaType.TEXT_PLAIN)` | `@Http.Produces(io.helidon.common.media.type.MediaTypes.TEXT_PLAIN_VALUE)` |
+| `@Produces(MediaType.APPLICATION_JSON)` | `@Http.Produces("application/json")` |
+| `@Consumes(MediaType.APPLICATION_JSON)` | `@Http.Consumes("application/json")` |
+| `@Produces(MediaType.TEXT_PLAIN)` | `@Http.Produces("text/plain")` |
 
-If the media type constant is not available, use the string literal directly (e.g., `"application/json"`).
+Use string literals for media types. Place `@Http.Produces`/`@Http.Consumes` on each method, NOT on the class.
 
 ## Auth-injected parameters
 

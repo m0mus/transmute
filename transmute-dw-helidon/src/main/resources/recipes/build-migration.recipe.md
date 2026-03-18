@@ -39,6 +39,11 @@ Fill in the captured identity values. Then:
   carry them into the `<dependencies>` section of the new POM.
 - **Keep** any `<dependencyManagement>` entries that are not Dropwizard-related.
 - **Keep** any `<properties>` entries that are not Dropwizard-related (including `mainClass`).
+- **Override** any `maven.compiler.release`, `maven.compiler.source`, or `maven.compiler.target`
+  property to `21`. Helidon 4.x requires Java 21. Remove any old Java version settings (e.g., `11`, `17`).
+- **Add explicit versions** for any kept test dependencies that were previously managed by the
+  Dropwizard parent BOM (`mockito-core`, `assertj-core`, `junit-jupiter`, etc.). Use recent
+  stable versions. If the original POM had version properties for these, keep them.
 - Do **not** duplicate dependencies already present in the template.
 
 #### Helidon 4 SE Maven template
@@ -65,6 +70,7 @@ Fill in the captured identity values. Then:
     <properties>
         <mainClass>FILL_MAIN_CLASS</mainClass>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>21</maven.compiler.release>
     </properties>
 
     <dependencies>
