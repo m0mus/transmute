@@ -88,6 +88,17 @@ class RecipeMigrationIT {
         assertFalse(output.contains("import io.dropwizard.hibernate"), "DW hibernate import should be removed");
     }
 
+    @Test
+    void beanValidationMigration() throws Exception {
+        var input = fixture("PeopleResource.java");
+        var output = harness.applyRecipe("Bean Validation Migration", input);
+        var failures = harness.runPostchecks("Bean Validation Migration", output);
+
+        assertTrue(failures.isEmpty(), "Postcheck failures: " + failures);
+        assertFalse(output.contains("import javax.validation"), "javax.validation import should be removed");
+        assertTrue(output.contains("import jakarta.validation"), "jakarta.validation import should be added");
+    }
+
     private String fixture(String name) throws Exception {
         try (var stream = getClass().getResourceAsStream("/fixtures/" + name)) {
             assertNotNull(stream, "Fixture not found: " + name);
