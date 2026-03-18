@@ -378,13 +378,16 @@ Recipe integration tests apply each migration to real Dropwizard source files fr
 [dropwizard-example](https://github.com/dropwizard/dropwizard/tree/master/dropwizard-example)
 project and verify postchecks pass.
 
-Tests require a real AI model and are skipped automatically when `TRANSMUTE_API_KEY`
-is not set:
+IT tests are **not run by default**. They require the `-Pit` Maven profile and a real AI
+model. Set `TRANSMUTE_API_KEY` (and optionally `TRANSMUTE_MODEL_PROVIDER`) then activate
+the profile:
 
 ```powershell
 $env:TRANSMUTE_API_KEY = "sk-..."
 mvn clean test --also-make -pl transmute-dw-helidon -Pit
 ```
+
+Without `-Pit`, `mvn test` completes immediately with no IT tests executed.
 
 Fixture files are in `src/test/resources/fixtures/`. The test harness (`RecipeTestHarness`)
 loads recipes from the module's own classpath, so it always tests the current recipe files.
