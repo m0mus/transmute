@@ -153,6 +153,30 @@ public class MarkdownMigrationLoader {
                 body);
     }
 
+    public record Hints(String compileHints, String testHints) {}
+
+    /**
+     * Loads converter-contributed agent hints from {@code hints/compile-hints.md} and
+     * {@code hints/test-hints.md} on the classpath. Content from all JARs is concatenated.
+     */
+    public Hints loadHints() {
+        var compile = new StringBuilder();
+        var test    = new StringBuilder();
+        try (var scan = new ClassGraph().acceptPaths("hints").scan()) {
+            for (var r : scan.getAllResources()) {
+                var path = r.getPath();
+                try {
+                    var content = new String(r.load(), StandardCharsets.UTF_8);
+                    if (path.endsWith("compile-hints.md")) compile.append(content).append("\n");
+                    if (path.endsWith("test-hints.md"))    test.append(content).append("\n");
+                } catch (java.io.IOException e) {
+                    System.err.println("[MarkdownMigrationLoader] Failed to load hints " + path + ": " + e.getMessage());
+                }
+            }
+        }
+        return new Hints(compile.toString().trim(), test.toString().trim());
+    }
+
     /**
      * Checks that no two features claim the same annotation or type FQN.
      * Recipes are exempt — they are exclusive by class-type matching.

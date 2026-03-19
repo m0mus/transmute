@@ -70,9 +70,11 @@ public class JavaProjectVisitor extends JavaIsoVisitor<ProjectInventory> {
             var type = classDecl.getType();
             if (type instanceof JavaType.Class cls) {
                 fc.className = cls.getFullyQualifiedName();
-                // Collect extends / implements
-                if (cls.getSupertype() != null) {
-                    addResolvedSuperType(cls.getSupertype().getFullyQualifiedName(), fc);
+                // Walk full supertype chain (stop at Object)
+                var sup = cls.getSupertype();
+                while (sup != null && !"java.lang.Object".equals(sup.getFullyQualifiedName())) {
+                    addResolvedSuperType(sup.getFullyQualifiedName(), fc);
+                    sup = sup.getSupertype();
                 }
                 for (var iface : cls.getInterfaces()) {
                     addResolvedSuperType(iface.getFullyQualifiedName(), fc);

@@ -21,6 +21,7 @@ import io.transmute.migration.FileChange;
 import io.transmute.migration.Migration;
 import io.transmute.migration.MigrationResult;
 import io.transmute.migration.MigrationScope;
+import io.transmute.migration.RecipeKind;
 import io.transmute.migration.Workspace;
 import io.transmute.migration.postcheck.PostcheckRunner;
 import io.transmute.tool.Ansi;
@@ -33,6 +34,7 @@ import io.transmute.tool.RunTestsTool;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -65,6 +67,7 @@ public class MigrationWorkflow {
 
     private final TransmuteConfig config;
     private final ObjectMapper json = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+    private final MarkdownMigrationLoader.Hints hints = new MarkdownMigrationLoader().loadHints();
 
     // Pipeline state — populated as steps execute
     private ProjectInventory inventory;
@@ -149,26 +152,272 @@ public class MigrationWorkflow {
     private void buildPlan() {
         Con.step(5, TOTAL_STEPS, "Building migration plan");
         plan = new MigrationPlanner().plan(migrations, inventory, List.of());
-        Con.info("Migrations in plan: " + Con.bold(String.valueOf(plan.entries().size())));
+        var view = buildPlanView();
+        printPlanView(view);
+        savePlanToFile(view);
+        Con.rule();
+    }
+
+    // ── Plan view ──────────────────────────────────────────────────────────────
+
+    /**
+     * Pre-computed, file-centric view of the migration plan.
+     *
+     * @param coveredFiles ordered list of all files targeted by at least one migration
+     * @param fileRecipes  file → names of RECIPE-kind migrations that target it
+     * @param fileFeatures file → names of FEATURE-kind migrations that target it
+     * @param projectScoped names of project-scoped migrations (no target files)
+     * @param totalSrc     source files in inventory (excludes test files)
+     * @param totalTest    test files in inventory
+     */
+    private record PlanView(
+            List<String> coveredFiles,
+            Map<String, List<String>> fileRecipes,
+            Map<String, List<String>> fileFeatures,
+            List<String> projectScoped,
+            int totalSrc,
+            int totalTest
+    ) {}
+
+    private PlanView buildPlanView() {
+        var fileRecipes  = new LinkedHashMap<String, List<String>>();
+        var fileFeatures = new LinkedHashMap<String, List<String>>();
+        var projectScoped = new ArrayList<String>();
+
         for (var entry : plan.entries()) {
-            var line = new StringBuilder("  ")
-                    .append(Con.CYAN).append(entry.migration().name()).append(Con.RESET)
-                    .append(Con.DIM).append("  [").append(entry.confidence()).append("]").append(Con.RESET);
-            if (!entry.targetFiles().isEmpty()) {
-                line.append(Con.DIM).append("  ").append(entry.targetFiles().size()).append(" files").append(Con.RESET);
-            }
-            System.out.println(line);
-            if (!entry.targetFiles().isEmpty()) {
-                int shown = Math.min(5, entry.targetFiles().size());
-                for (int i = 0; i < shown; i++) {
-                    System.out.println(Con.DIM + "      " + Path.of(entry.targetFiles().get(i)).getFileName() + Con.RESET);
-                }
-                if (entry.targetFiles().size() > shown) {
-                    System.out.println(Con.DIM + "      … " + (entry.targetFiles().size() - shown) + " more" + Con.RESET);
+            var migration = (AiMigration) entry.migration();
+            if (entry.targetFiles().isEmpty()) {
+                projectScoped.add(migration.name());
+            } else {
+                for (var file : entry.targetFiles()) {
+                    if (migration.skillType() == RecipeKind.RECIPE) {
+                        fileRecipes.computeIfAbsent(file, k -> new ArrayList<>()).add(migration.name());
+                    } else {
+                        fileFeatures.computeIfAbsent(file, k -> new ArrayList<>()).add(migration.name());
+                    }
                 }
             }
         }
-        Con.rule();
+
+        var coveredSet = new LinkedHashSet<String>();
+        fileRecipes.keySet().forEach(coveredSet::add);
+        fileFeatures.keySet().forEach(coveredSet::add);
+
+        int testFiles = (int) inventory.getJavaFiles().stream()
+                .filter(f -> f.sourceFile().replace('\\', '/').contains("/test/"))
+                .count();
+        int srcFiles = inventory.getJavaFiles().size() - testFiles;
+
+        return new PlanView(
+                List.copyOf(coveredSet),
+                fileRecipes,
+                fileFeatures,
+                List.copyOf(projectScoped),
+                srcFiles,
+                testFiles);
+    }
+
+    private void printPlanView(PlanView v) {
+        int covered    = v.coveredFiles().size();
+        int notTargeted = v.totalSrc() - covered;
+
+        // ── Overview ──────────────────────────────────────────────────────────
+        System.out.println();
+        Con.sectionHeader("Project Overview");
+        System.out.printf("  Source files:  %3d   │  Test files:     %3d%n", v.totalSrc(), v.totalTest());
+        System.out.printf("  Covered:       %3d   │  Not targeted:   %3d%n", covered, notTargeted);
+        System.out.printf("  Migrations:    %3d   │  Project-scoped: %3d%n",
+                plan.entries().size(), v.projectScoped().size());
+
+        // ── Dependencies ──────────────────────────────────────────────────────
+        var deps = inventory.getDependencies();
+        if (!deps.isEmpty()) {
+            long supportedCount = deps.stream().filter(d -> isDependencyCovered(d.groupId(), v)).count();
+            System.out.println();
+            Con.sectionHeader("Dependencies",
+                    supportedCount + " with migration support · " + (deps.size() - supportedCount) + " not targeted");
+            for (var dep : deps) {
+                var coord = dep.groupId() + ":" + dep.artifactId()
+                        + (dep.version() != null && !dep.version().isBlank() ? ":" + dep.version() : "");
+                if (isDependencyCovered(dep.groupId(), v)) {
+                    System.out.println("  " + Con.GREEN + "✓" + Con.RESET + "  " + coord);
+                } else {
+                    System.out.println("  " + Con.DIM + "·  " + coord + Con.RESET);
+                }
+            }
+        }
+
+        // ── Project-scoped ────────────────────────────────────────────────────
+        if (!v.projectScoped().isEmpty()) {
+            System.out.println();
+            Con.sectionHeader("Project-scoped", "run once, not file-specific");
+            for (var name : v.projectScoped()) {
+                System.out.println("  " + Con.CYAN + "•" + Con.RESET + "  " + name);
+            }
+        }
+
+        // ── File plan table ───────────────────────────────────────────────────
+        if (!v.coveredFiles().isEmpty()) {
+            System.out.println();
+            Con.sectionHeader("File Migration Plan",
+                    covered + " files · " + v.fileRecipes().size() + " with recipe · "
+                    + v.fileFeatures().size() + " with features");
+            int wFile    = 40;
+            int wRecipe  = 28;
+            System.out.println("  "
+                    + Con.DIM + padRight("File", wFile) + "  "
+                    + padRight("Recipe", wRecipe) + "  "
+                    + "Features" + Con.RESET);
+            System.out.println("  "
+                    + Con.DIM + "─".repeat(wFile) + "  "
+                    + "─".repeat(wRecipe) + "  "
+                    + "─".repeat(44) + Con.RESET);
+            for (var file : v.coveredFiles()) {
+                var recipes  = v.fileRecipes().getOrDefault(file, List.of());
+                var features = v.fileFeatures().getOrDefault(file, List.of());
+                var fileInfo = inventory.fileByPath(file);
+                var keyImports = fileInfo != null
+                        ? fileInfo.imports().stream()
+                                .filter(i -> !i.startsWith("java.") && !i.startsWith("javax.")
+                                        && !i.startsWith("jakarta.") && !i.startsWith("org.junit")
+                                        && !i.startsWith("org.mockito"))
+                                .limit(2).toList()
+                        : List.<String>of();
+
+                var featStr = features.isEmpty() ? Con.DIM + "—" + Con.RESET
+                        : features.stream().collect(java.util.stream.Collectors.joining(", "));
+
+                // Build the framework-hints column (key framework imports, dimmed)
+                var importHint = keyImports.isEmpty() ? ""
+                        : Con.DIM + "  [" + keyImports.stream()
+                                .map(i -> i.substring(i.lastIndexOf('.') + 1))
+                                .collect(java.util.stream.Collectors.joining(", ")) + "]" + Con.RESET;
+
+                String recipePadded = recipes.isEmpty()
+                        ? Con.DIM + padRight("—", wRecipe) + Con.RESET
+                        : padRight(truncate(String.join(", ", recipes), wRecipe), wRecipe);
+                System.out.println("  "
+                        + padRight(truncate(shortPath(file), wFile), wFile) + "  "
+                        + recipePadded + "  "
+                        + featStr + importHint);
+            }
+        }
+
+        // ── Not targeted ──────────────────────────────────────────────────────
+        var untouched = inventory.getJavaFiles().stream()
+                .filter(f -> !v.coveredFiles().contains(f.sourceFile()))
+                .filter(f -> !f.sourceFile().replace('\\', '/').contains("/test/"))
+                .map(f -> shortPath(f.sourceFile()))
+                .toList();
+        if (!untouched.isEmpty()) {
+            System.out.println();
+            Con.sectionHeader("Not targeted", untouched.size() + " files");
+            int shown = Math.min(8, untouched.size());
+            for (int i = 0; i < shown; i++) {
+                System.out.println("  " + Con.DIM + "·  " + untouched.get(i) + Con.RESET);
+            }
+            if (untouched.size() > shown) {
+                System.out.println("  " + Con.DIM + "·  … " + (untouched.size() - shown) + " more" + Con.RESET);
+            }
+        }
+    }
+
+    private void savePlanToFile(PlanView v) {
+        try {
+            var sb = new StringBuilder();
+            int covered     = v.coveredFiles().size();
+            int notTargeted = v.totalSrc() - covered;
+
+            txtSection(sb, "Migration Plan");
+            sb.append("Generated : ").append(java.time.Instant.now()).append("\n");
+            sb.append("Project   : ").append(config.projectDir()).append("\n\n");
+
+            txtSection(sb, "Project Overview");
+            sb.append(String.format("  Source files  : %d%n", v.totalSrc()));
+            sb.append(String.format("  Test files    : %d%n", v.totalTest()));
+            sb.append(String.format("  Covered       : %d%n", covered));
+            sb.append(String.format("  Not targeted  : %d%n", notTargeted));
+            sb.append(String.format("  Migrations    : %d%n", plan.entries().size()));
+            sb.append(String.format("  Project-scoped: %d%n", v.projectScoped().size()));
+            sb.append("\n");
+
+            var deps = inventory.getDependencies();
+            if (!deps.isEmpty()) {
+                long supportedCount = deps.stream().filter(d -> isDependencyCovered(d.groupId(), v)).count();
+                txtSection(sb, "Dependencies  (" + supportedCount + " covered, "
+                        + (deps.size() - supportedCount) + " not targeted)");
+                for (var dep : deps) {
+                    boolean supported = isDependencyCovered(dep.groupId(), v);
+                    var coord = dep.groupId() + ":" + dep.artifactId()
+                            + (dep.version() != null && !dep.version().isBlank() ? ":" + dep.version() : "");
+                    sb.append(supported ? "  [+] " : "  [ ] ").append(coord).append("\n");
+                }
+                sb.append("\n");
+            }
+
+            if (!v.projectScoped().isEmpty()) {
+                txtSection(sb, "Project-scoped Migrations");
+                for (var name : v.projectScoped()) {
+                    sb.append("  - ").append(name).append("\n");
+                }
+                sb.append("\n");
+            }
+
+            if (!v.coveredFiles().isEmpty()) {
+                txtSection(sb, "File Migration Plan");
+                int wFile = v.coveredFiles().stream()
+                        .mapToInt(f -> f.length()).max().orElse(40) + 2;
+                int wRecipe = v.fileRecipes().values().stream()
+                        .mapToInt(r -> String.join(", ", r).length()).max().orElse(20) + 2;
+                var hdr = padRight("File", wFile) + padRight("Recipe", wRecipe) + "Features";
+                sb.append("  ").append(hdr).append("\n");
+                sb.append("  ").append("─".repeat(hdr.length())).append("\n");
+                for (var file : v.coveredFiles()) {
+                    var recipes  = v.fileRecipes().getOrDefault(file, List.of());
+                    var features = v.fileFeatures().getOrDefault(file, List.of());
+                    sb.append("  ")
+                            .append(padRight(file, wFile))
+                            .append(padRight(recipes.isEmpty() ? "—" : String.join(", ", recipes), wRecipe))
+                            .append(features.isEmpty() ? "—" : String.join(", ", features))
+                            .append("\n");
+                }
+                sb.append("\n");
+            }
+
+            var untouched = inventory.getJavaFiles().stream()
+                    .filter(f -> !v.coveredFiles().contains(f.sourceFile()))
+                    .filter(f -> !f.sourceFile().replace('\\', '/').contains("/test/"))
+                    .map(JavaFileInfo::sourceFile)
+                    .toList();
+            if (!untouched.isEmpty()) {
+                txtSection(sb, "Not Targeted  (" + untouched.size() + " files)");
+                for (var f : untouched) {
+                    sb.append("  ").append(f).append("\n");
+                }
+                sb.append("\n");
+            }
+
+            var planPath = Path.of(config.outputDir()).resolve("migration-plan.txt");
+            Files.writeString(planPath, sb.toString());
+            System.out.println();
+            Con.info(Con.DIM + "Plan saved → " + Con.RESET + planPath.getFileName());
+        } catch (Exception e) {
+            Con.warn("Could not save plan file: " + e.getMessage());
+        }
+    }
+
+    /** Appends a plain-text section header (title + underline of title.length()+1 dashes + blank line). */
+    private static void txtSection(StringBuilder sb, String title) {
+        sb.append(title).append("\n");
+        sb.append("─".repeat(title.length() + 1)).append("\n");
+        sb.append("\n");
+    }
+
+    private boolean isDependencyCovered(String groupId, PlanView v) {
+        return v.coveredFiles().stream()
+                .map(f -> inventory.fileByPath(f))
+                .filter(Objects::nonNull)
+                .anyMatch(f -> f.imports().stream().anyMatch(i -> i.startsWith(groupId)));
     }
 
     private void approvePlan() {
@@ -259,7 +508,7 @@ public class MigrationWorkflow {
                 throw new RuntimeException("Compile failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking compile-fix agent…" + Con.RESET);
-            buildCompileFixAgent().fix(config.outputDir(), result.errors(), projectSummary, readJournal());
+            buildCompileFixAgent().fix(config.outputDir(), result.errors(), projectSummary, readJournal(), hints.compileHints());
         }
         Con.rule();
     }
@@ -280,7 +529,7 @@ public class MigrationWorkflow {
                 throw new RuntimeException("Tests failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking test-fix agent…" + Con.RESET);
-            buildTestFixAgent().fix(config.outputDir(), result.output(), projectSummary, readJournal());
+            buildTestFixAgent().fix(config.outputDir(), result.output(), projectSummary, readJournal(), hints.testHints());
         }
         Con.rule();
     }
@@ -530,6 +779,21 @@ public class MigrationWorkflow {
             System.out.println(RULE_STR);
         }
 
+        /**
+         * Prints a header line, an underline of {@code title.length() + 1} dashes, and a blank line.
+         * Use {@code title} for the plain visible text; {@code subtitle} (dimmed) appended after two spaces.
+         */
+        static void sectionHeader(String title, String subtitle) {
+            System.out.println("  " + BOLD + title + RESET
+                    + (subtitle.isEmpty() ? "" : "  " + DIM + subtitle + RESET));
+            System.out.println("  " + DIM + "─".repeat(title.length() + 1) + RESET);
+            System.out.println();
+        }
+
+        static void sectionHeader(String title) {
+            sectionHeader(title, "");
+        }
+
         static void ok(String msg) {
             System.out.println("  " + GREEN + "✓" + RESET + "  " + msg);
         }
@@ -552,6 +816,29 @@ public class MigrationWorkflow {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static String shortPath(String path) {
+        var p = Path.of(path.replace('\\', '/'));
+        int n = p.getNameCount();
+        if (n >= 2) return p.getName(n - 2) + "/" + p.getFileName();
+        return p.getFileName() != null ? p.getFileName().toString() : path;
+    }
+
+    private static String padRight(String s, int width) {
+        if (s == null) s = "";
+        if (s.length() >= width) return s.substring(0, width);
+        return s + " ".repeat(width - s.length());
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        if (s.length() <= max) return s;
+        return s.substring(0, max - 1) + "…";
+    }
+
+    private static String stripAnsi(String s) {
+        return s == null ? "" : s.replaceAll("\u001B\\[[;\\d]*m", "");
+    }
 
     private String readUserInput(String prompt) {
         System.out.print(prompt);

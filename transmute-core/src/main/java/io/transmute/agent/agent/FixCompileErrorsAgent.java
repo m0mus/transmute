@@ -21,11 +21,14 @@ public interface FixCompileErrorsAgent {
         ## Migration Journal (context from earlier migration steps)
         {{journalContext}}
 
+        {{converterHints}}
+
         Use outputDir-relative paths only (no absolute paths).
         Read each file with errors, fix the issues, and write the corrected files.
         """)
     String fix(@V("outputDir") String outputDir,
                @V("compileErrors") String errors,
                @V("projectSummary") String projectSummary,
-               @V("journalContext") String journalContext);
+               @V("journalContext") String journalContext,
+               @V("converterHints") String converterHints);
 }

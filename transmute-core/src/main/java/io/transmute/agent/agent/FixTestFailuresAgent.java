@@ -21,6 +21,8 @@ public interface FixTestFailuresAgent {
         ## Migration Journal (context from earlier migration steps)
         {{journalContext}}
 
+        {{converterHints}}
+
         Use outputDir-relative paths only (no absolute paths).
         Read the failing test files and the code they test, fix the issues,
         and write the corrected files.
@@ -28,5 +30,6 @@ public interface FixTestFailuresAgent {
     String fix(@V("outputDir") String outputDir,
                @V("testOutput") String testOutput,
                @V("projectSummary") String projectSummary,
-               @V("journalContext") String journalContext);
+               @V("journalContext") String journalContext,
+               @V("converterHints") String converterHints);
 }
