@@ -36,6 +36,11 @@ public class TransmuteCli {
             System.exit(args.length == 0 ? 1 : 0);
         }
 
+        // Force UTF-8 output so Unicode glyphs (✓ → ⚠ ✗) render correctly on Windows
+        var utf8 = java.nio.charset.StandardCharsets.UTF_8;
+        System.setOut(new java.io.PrintStream(System.out, true, utf8));
+        System.setErr(new java.io.PrintStream(System.err, true, utf8));
+
         var config = TransmuteConfig.fromArgs(args);
 
         if (config.projectDir() == null) {
@@ -46,22 +51,6 @@ public class TransmuteCli {
 
         // Configure model provider
         ModelFactory.configure(config);
-
-        System.out.println("Transmute Migration Agent");
-        System.out.println("  Model provider:  " + config.modelProvider());
-        System.out.println("  Model id:        " + resolvedModelId(config));
-        if (config.baseUrl() != null && !config.baseUrl().isBlank()) {
-            System.out.println("  Model base URL:  " + config.baseUrl());
-        }
-        if (config.forceHttp1()) {
-            System.out.println("  Force HTTP 1.1:  yes");
-        }
-        System.out.println("  Project:         " + config.projectDir());
-        System.out.println("  Output:          " + config.outputDir());
-        System.out.println("  Dry run:         " + (config.dryRun() ? "yes" : "no"));
-        System.out.println("  Auto-approve:    " + (config.autoApprove() ? "yes" : "no"));
-        System.out.println("  Verbose:         " + (config.verbose() ? "yes" : "no"));
-        System.out.println();
 
         System.setProperty("transmute.verbose", String.valueOf(config.verbose()));
 
