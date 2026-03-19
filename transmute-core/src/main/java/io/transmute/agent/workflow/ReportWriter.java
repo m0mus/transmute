@@ -167,7 +167,116 @@ class ReportWriter {
             Out.info(Out.DIM + "[dry-run] Would write report to: " + reportPath + Out.RESET);
         }
         saveResultsToFile(execResult, repairResult);
+        printConsoleReport(execResult, repairResult, todosByCategory);
         Out.rule();
+    }
+
+    private void printConsoleReport(MigrationExecutor.ExecutionResult execResult,
+                                    RepairLoopService.RepairResult repairResult,
+                                    Map<String, Long> todosByCategory) {
+        var fileOutcomes = execResult.fileOutcomes();
+        var allPostcheckFailures = execResult.postchecksFailures();
+        boolean compileSuccess = repairResult.compileSuccess();
+        boolean compileDegraded = repairResult.compileDegraded();
+        int compileIterations = repairResult.compileIterations();
+        boolean testSuccess = repairResult.testSuccess();
+        int testIterations = repairResult.testIterations();
+
+        // ── 1. Summary ────────────────────────────────────────────────────────
+        Out.sectionHeader("Migration Summary",
+                execResult.migrationsExecuted() + " migrations · " + execResult.changedFiles() + " files changed");
+
+        System.out.printf("  Migrations executed  %d%n", execResult.migrationsExecuted());
+        System.out.printf("  Files changed        %d%n", execResult.changedFiles());
+
+        String compileStatus;
+        if (compileDegraded) {
+            compileStatus = Out.YELLOW + "⚠ degraded (" + compileIterations + " attempts)" + Out.RESET;
+        } else if (compileSuccess) {
+            compileStatus = Out.GREEN + "✓ success" + Out.RESET;
+        } else {
+            compileStatus = Out.RED + "✗ failed" + Out.RESET;
+        }
+        System.out.println("  Compile              " + compileStatus);
+
+        String testStatus;
+        if (testIterations == 0) {
+            testStatus = Out.DIM + "— skipped" + Out.RESET;
+        } else if (testSuccess) {
+            testStatus = Out.GREEN + "✓ success" + Out.RESET;
+        } else {
+            testStatus = Out.RED + "✗ failed" + Out.RESET;
+        }
+        System.out.println("  Tests                " + testStatus);
+        System.out.println();
+
+        // ── 2. File Results ───────────────────────────────────────────────────
+        var view = PlanView.build(plan, inventory);
+        if (!view.coveredFiles().isEmpty()) {
+            Out.sectionHeader("File Results", view.coveredFiles().size() + " files");
+            int wFile   = 40;
+            int wRecipe = 28;
+            int wFeat   = 30;
+            System.out.println("  "
+                    + Out.DIM + PlanRenderer.padRight("File", wFile) + "  "
+                    + PlanRenderer.padRight("Recipe", wRecipe) + "  "
+                    + PlanRenderer.padRight("Features", wFeat) + "  "
+                    + "Outcome" + Out.RESET);
+            System.out.println("  "
+                    + Out.DIM + "─".repeat(wFile) + "  "
+                    + "─".repeat(wRecipe) + "  "
+                    + "─".repeat(wFeat) + "  "
+                    + "─".repeat(12) + Out.RESET);
+            for (var file : view.coveredFiles()) {
+                var recipes  = view.fileRecipes().getOrDefault(file, List.of());
+                var features = view.fileFeatures().getOrDefault(file, List.of());
+                var outcome  = fileOutcomes.get(file);
+                String outcomeStr;
+                if (outcome == null) {
+                    outcomeStr = Out.DIM + "—" + Out.RESET;
+                } else {
+                    outcomeStr = switch (outcome) {
+                        case CONVERTED -> Out.GREEN  + "[+]" + Out.RESET;
+                        case PARTIAL   -> Out.CYAN   + "[~]" + Out.RESET;
+                        case COMMENTED -> Out.YELLOW + "[!]" + Out.RESET;
+                        case UNCHANGED -> Out.DIM    + "[=]" + Out.RESET;
+                        case FAILED    -> Out.RED    + "[x]" + Out.RESET;
+                    };
+                }
+                String recipePadded = recipes.isEmpty()
+                        ? Out.DIM + PlanRenderer.padRight("—", wRecipe) + Out.RESET
+                        : PlanRenderer.padRight(PlanRenderer.truncate(String.join(", ", recipes), wRecipe), wRecipe);
+                String featStr = features.isEmpty()
+                        ? Out.DIM + PlanRenderer.padRight("—", wFeat) + Out.RESET
+                        : PlanRenderer.padRight(PlanRenderer.truncate(String.join(", ", features), wFeat), wFeat);
+                System.out.println("  "
+                        + PlanRenderer.padRight(PlanRenderer.truncate(PlanRenderer.shortPath(file), wFile), wFile) + "  "
+                        + recipePadded + "  "
+                        + featStr + "  "
+                        + outcomeStr);
+            }
+            System.out.println();
+        }
+
+        // ── 3. TODOs ──────────────────────────────────────────────────────────
+        if (!todosByCategory.isEmpty()) {
+            long total = todosByCategory.values().stream().mapToLong(Long::longValue).sum();
+            Out.sectionHeader("TRANSMUTE TODOs", total + " total");
+            for (var entry : todosByCategory.entrySet()) {
+                System.out.println("  " + Out.YELLOW + "[!]" + Out.RESET + "  " + entry.getKey() + "  (" + entry.getValue() + ")");
+            }
+            System.out.println("  " + Out.DIM + "(see migration-todos.txt)" + Out.RESET);
+            System.out.println();
+        }
+
+        // ── 4. Postcheck Failures ─────────────────────────────────────────────
+        if (!allPostcheckFailures.isEmpty()) {
+            Out.sectionHeader("Postcheck Failures", String.valueOf(allPostcheckFailures.size()));
+            for (var failure : allPostcheckFailures) {
+                System.out.println("  " + Out.RED + "[!]" + Out.RESET + "  " + failure);
+            }
+            System.out.println();
+        }
     }
 
     private void saveResultsToFile(MigrationExecutor.ExecutionResult execResult,
