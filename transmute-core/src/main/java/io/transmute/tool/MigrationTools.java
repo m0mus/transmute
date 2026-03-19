@@ -20,16 +20,14 @@ public class MigrationTools {
     public List<Object> all() {
         return List.of(
                 new FileOperationsTool(outputDir),
-                new CompileProjectTool(activeProfiles),
-                new RunTestsTool(activeProfiles),
+                new MavenBuildTool(activeProfiles),
                 new CopyProjectTool()
         );
     }
 
     private static final Set<Class<?>> WORKFLOW_ONLY_TOOLS = Set.of(
             CopyProjectTool.class,
-            CompileProjectTool.class,
-            RunTestsTool.class
+            MavenBuildTool.class
     );
 
     /**
