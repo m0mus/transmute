@@ -11,7 +11,10 @@ import io.transmute.agent.agent.FixCompileErrorsAgent;
 import io.transmute.agent.agent.FixTestFailuresAgent;
 import io.transmute.agent.agent.ProjectAnalysisAgent;
 import io.transmute.agent.agent.ReconciliationAgent;
+import io.transmute.inventory.DependencyInfo;
 import io.transmute.inventory.JavaFileInfo;
+import io.transmute.catalog.DependencyCatalogEntry;
+import io.transmute.catalog.DependencyStatus;
 import io.transmute.catalog.MarkdownMigrationLoader;
 import io.transmute.catalog.MigrationPlan;
 import io.transmute.catalog.MigrationPlanner;
@@ -67,7 +70,9 @@ public class MigrationWorkflow {
 
     private final TransmuteConfig config;
     private final ObjectMapper json = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private final MarkdownMigrationLoader.Hints hints = new MarkdownMigrationLoader().loadHints();
+    private final MarkdownMigrationLoader loader = new MarkdownMigrationLoader();
+    private final MarkdownMigrationLoader.Hints hints = loader.loadHints();
+    private final MarkdownMigrationLoader.Catalog catalog = loader.loadCatalog();
 
     // Pipeline state — populated as steps execute
     private ProjectInventory inventory;
@@ -83,6 +88,7 @@ public class MigrationWorkflow {
 
     public void run() throws Exception {
         printBanner();
+        printConfig();
 
         migrationsExecuted = 0;
         changedFiles = 0;
@@ -144,7 +150,7 @@ public class MigrationWorkflow {
 
     private void discoverMigrations() {
         Con.step(4, TOTAL_STEPS, "Discovering migrations");
-        migrations = List.copyOf(new MarkdownMigrationLoader().load());
+        migrations = List.copyOf(loader.load());
         Con.info("Found " + Con.bold(migrations.size() + " migrations"));
         Con.rule();
     }
@@ -232,19 +238,39 @@ public class MigrationWorkflow {
         // ── Dependencies ──────────────────────────────────────────────────────
         var deps = inventory.getDependencies();
         if (!deps.isEmpty()) {
-            long supportedCount = deps.stream().filter(d -> isDependencyCovered(d.groupId(), v)).count();
+            long replaced    = deps.stream().filter(d -> getCatalogStatus(d) == DependencyStatus.REPLACED).count();
+            long partial     = deps.stream().filter(d -> getCatalogStatus(d) == DependencyStatus.PARTIAL).count();
+            long unsupported = deps.stream().filter(d -> getCatalogStatus(d) == DependencyStatus.UNSUPPORTED).count();
+            long unknown     = deps.stream().filter(d -> getCatalogStatus(d) == DependencyStatus.UNKNOWN).count();
+            var subtitle = new java.util.StringJoiner(" · ");
+            if (replaced    > 0) subtitle.add(replaced    + " replaced");
+            if (partial     > 0) subtitle.add(partial     + " partial");
+            if (unsupported > 0) subtitle.add(unsupported + " unsupported");
+            if (unknown     > 0) subtitle.add(unknown     + " unknown");
             System.out.println();
-            Con.sectionHeader("Dependencies",
-                    supportedCount + " with migration support · " + (deps.size() - supportedCount) + " not targeted");
+            Con.sectionHeader("Dependencies", subtitle.toString());
             for (var dep : deps) {
                 var coord = dep.groupId() + ":" + dep.artifactId()
                         + (dep.version() != null && !dep.version().isBlank() ? ":" + dep.version() : "");
-                if (isDependencyCovered(dep.groupId(), v)) {
-                    System.out.println("  " + Con.GREEN + "✓" + Con.RESET + "  " + coord);
+                var status = getCatalogStatus(dep);
+                var entry = getCatalogEntry(dep);
+                var noteStr = (entry != null && entry.notes() != null && !entry.notes().isBlank())
+                        ? Con.DIM + " - " + entry.notes() + Con.RESET : "";
+                if (status == DependencyStatus.REPLACED) {
+                    System.out.println("  " + Con.GREEN + "[+]" + Con.RESET + "  " + coord + noteStr);
+                } else if (status == DependencyStatus.PARTIAL) {
+                    System.out.println("  " + Con.YELLOW + "[~]" + Con.RESET + "  " + coord + noteStr);
+                } else if (status == DependencyStatus.UNSUPPORTED) {
+                    System.out.println("  " + Con.RED + "[!]" + Con.RESET + "  " + coord + noteStr);
+                } else if (status == DependencyStatus.PASSTHROUGH) {
+                    System.out.println("  " + Con.DIM + "[=]  " + coord + Con.RESET);
                 } else {
-                    System.out.println("  " + Con.DIM + "·  " + coord + Con.RESET);
+                    System.out.println("  " + Con.DIM + "[?]  " + coord + Con.RESET);
                 }
             }
+            System.out.println("  " + Con.DIM
+                    + "[+] replaced  [~] partial  [!] unsupported  [=] passthrough  [?] unknown"
+                    + Con.RESET);
         }
 
         // ── Project-scoped ────────────────────────────────────────────────────
@@ -343,14 +369,31 @@ public class MigrationWorkflow {
 
             var deps = inventory.getDependencies();
             if (!deps.isEmpty()) {
-                long supportedCount = deps.stream().filter(d -> isDependencyCovered(d.groupId(), v)).count();
-                txtSection(sb, "Dependencies  (" + supportedCount + " covered, "
-                        + (deps.size() - supportedCount) + " not targeted)");
+                long replaced    = deps.stream().filter(d -> getCatalogStatus(d) == DependencyStatus.REPLACED).count();
+                long partial     = deps.stream().filter(d -> getCatalogStatus(d) == DependencyStatus.PARTIAL).count();
+                long unsupported = deps.stream().filter(d -> getCatalogStatus(d) == DependencyStatus.UNSUPPORTED).count();
+                long unknown     = deps.stream().filter(d -> getCatalogStatus(d) == DependencyStatus.UNKNOWN).count();
+                var counts = new java.util.StringJoiner(" · ");
+                if (replaced    > 0) counts.add(replaced    + " replaced");
+                if (partial     > 0) counts.add(partial     + " partial");
+                if (unsupported > 0) counts.add(unsupported + " unsupported");
+                if (unknown     > 0) counts.add(unknown     + " unknown");
+                txtSection(sb, "Dependencies  (" + counts + ")");
                 for (var dep : deps) {
-                    boolean supported = isDependencyCovered(dep.groupId(), v);
+                    var status = getCatalogStatus(dep);
+                    var symbol = switch (status) {
+                        case REPLACED    -> "[+]";
+                        case PARTIAL     -> "[~]";
+                        case UNSUPPORTED -> "[!]";
+                        case PASSTHROUGH -> "[=]";
+                        default          -> "[?]";
+                    };
                     var coord = dep.groupId() + ":" + dep.artifactId()
                             + (dep.version() != null && !dep.version().isBlank() ? ":" + dep.version() : "");
-                    sb.append(supported ? "  [+] " : "  [ ] ").append(coord).append("\n");
+                    var entry = getCatalogEntry(dep);
+                    var note = (entry != null && entry.notes() != null && !entry.notes().isBlank())
+                            ? "  - " + entry.notes() : "";
+                    sb.append("  ").append(symbol).append("  ").append(coord).append(note).append("\n");
                 }
                 sb.append("\n");
             }
@@ -413,11 +456,36 @@ public class MigrationWorkflow {
         sb.append("\n");
     }
 
-    private boolean isDependencyCovered(String groupId, PlanView v) {
-        return v.coveredFiles().stream()
-                .map(f -> inventory.fileByPath(f))
-                .filter(Objects::nonNull)
-                .anyMatch(f -> f.imports().stream().anyMatch(i -> i.startsWith(groupId)));
+    private DependencyCatalogEntry getCatalogEntry(DependencyInfo dep) {
+        var entry = catalog.entries().get(dep.groupId() + ":" + dep.artifactId());
+        if (entry == null) entry = catalog.entries().get(dep.groupId() + ":*");
+        return entry;
+    }
+
+    private DependencyStatus getCatalogStatus(DependencyInfo dep) {
+        var entry = getCatalogEntry(dep);
+        return entry != null ? entry.status() : DependencyStatus.PASSTHROUGH;
+    }
+
+    private String buildCatalogHints() {
+        var relevant = inventory.getDependencies().stream()
+                .filter(d -> {
+                    var e = getCatalogEntry(d);
+                    return e != null && (e.status() == DependencyStatus.UNSUPPORTED
+                                     || e.status() == DependencyStatus.PARTIAL);
+                })
+                .toList();
+        if (relevant.isEmpty()) return "";
+        var sb = new StringBuilder("## Known Dependency Status\n");
+        for (var dep : relevant) {
+            var e = getCatalogEntry(dep);
+            sb.append("- **").append(dep.groupId()).append(":").append(dep.artifactId())
+              .append("** (").append(e.status().name().toLowerCase()).append(")");
+            if (e.notes() != null && !e.notes().isBlank())
+                sb.append(": ").append(e.notes());
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 
     private void approvePlan() {
@@ -508,7 +576,10 @@ public class MigrationWorkflow {
                 throw new RuntimeException("Compile failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking compile-fix agent…" + Con.RESET);
-            buildCompileFixAgent().fix(config.outputDir(), result.errors(), projectSummary, readJournal(), hints.compileHints());
+            var catalogSection = buildCatalogHints();
+            var effectiveCompileHints = Stream.of(catalogSection, hints.compileHints())
+                    .filter(s -> s != null && !s.isBlank()).collect(Collectors.joining("\n\n"));
+            buildCompileFixAgent().fix(config.outputDir(), result.errors(), projectSummary, readJournal(), effectiveCompileHints);
         }
         Con.rule();
     }
@@ -529,7 +600,10 @@ public class MigrationWorkflow {
                 throw new RuntimeException("Tests failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking test-fix agent…" + Con.RESET);
-            buildTestFixAgent().fix(config.outputDir(), result.output(), projectSummary, readJournal(), hints.testHints());
+            var catalogSection = buildCatalogHints();
+            var effectiveTestHints = Stream.of(catalogSection, hints.testHints())
+                    .filter(s -> s != null && !s.isBlank()).collect(Collectors.joining("\n\n"));
+            buildTestFixAgent().fix(config.outputDir(), result.output(), projectSummary, readJournal(), effectiveTestHints);
         }
         Con.rule();
     }
@@ -579,7 +653,7 @@ public class MigrationWorkflow {
             Workspace workspace,
             dev.langchain4j.model.chat.ChatModel model) {
 
-        System.out.println("  " + Con.CYAN + "⬡ " + Con.RESET
+        System.out.println("  " + Con.CYAN + ">> " + Con.RESET
                 + Con.BOLD + aiMigration.skillName() + Con.RESET
                 + Con.DIM + "  (project)" + Con.RESET);
 
@@ -629,7 +703,7 @@ public class MigrationWorkflow {
         }
 
         var migrationNames = aiMigrations.stream().map(AiMigration::skillName).toList();
-        System.out.println("  " + Con.CYAN + "◆ " + Con.RESET
+        System.out.println("  " + Con.CYAN + ">> " + Con.RESET
                 + Con.BOLD + Path.of(relPath).getFileName() + Con.RESET
                 + "  " + Con.DIM
                 + migrationNames.stream().map(n -> "[" + n + "]").collect(Collectors.joining(" "))
@@ -753,6 +827,34 @@ public class MigrationWorkflow {
         System.out.println(c + "     ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚═╝     ╚═╝ ╚═════╝    ╚═╝   ╚══════╝" + r);
         System.out.println(d + "                        Framework migration powered by AI" + r);
         System.out.println();
+    }
+
+    private void printConfig() {
+        var d = Con.DIM;
+        var r = Con.RESET;
+        System.out.println(d + "  Model provider:  " + r + config.modelProvider());
+        System.out.println(d + "  Model id:        " + r + resolvedModelId());
+        if (config.baseUrl() != null && !config.baseUrl().isBlank()) {
+            System.out.println(d + "  Model base URL:  " + r + config.baseUrl());
+        }
+        if (config.forceHttp1()) {
+            System.out.println(d + "  Force HTTP 1.1:  " + r + "yes");
+        }
+        System.out.println(d + "  Project:         " + r + config.projectDir());
+        System.out.println(d + "  Output:          " + r + config.outputDir());
+        System.out.println(d + "  Dry run:         " + r + (config.dryRun() ? "yes" : "no"));
+        System.out.println(d + "  Auto-approve:    " + r + (config.autoApprove() ? "yes" : "no"));
+        System.out.println(d + "  Verbose:         " + r + (config.verbose() ? "yes" : "no"));
+        System.out.println();
+    }
+
+    private String resolvedModelId() {
+        return switch (config.modelProvider()) {
+            case "oci-genai" -> config.modelId("cohere.command-r-plus");
+            case "openai"    -> config.modelId("gpt-4o");
+            case "ollama"    -> config.modelId("llama3.3");
+            default          -> config.modelId();
+        };
     }
 
     // ── Console formatting ────────────────────────────────────────────────────

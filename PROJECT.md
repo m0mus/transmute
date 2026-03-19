@@ -57,7 +57,8 @@ TransmuteCli (entry point)
         ├── [4]  MigrationDiscovery    load *.recipe.md / *.feature.md from classpath
         ├── [5]  MigrationPlanner      evaluate triggers; resolve target files;
         │                              deterministic sort by order (then name);
-        │                              derive scope (FILE vs PROJECT)
+        │                              derive scope (FILE vs PROJECT);
+        │                              print file-centric plan; save migration-plan.txt
         ├── [6]  ApprovePlan           human gate (skipped if --auto-approve)
         │
         ├── [7]  ExecuteMigrations
@@ -202,15 +203,21 @@ io.transmute.migration/
 io.transmute.catalog/
   MigrationPlanner.java       Evaluates triggers; builds sorted, scoped MigrationPlan
   MigrationPlan.java          Ordered list of MigrationExecutionEntry (migration + targetFiles + confidence)
-  MarkdownMigrationLoader.java Scans classpath for markdown migrations; parses front-matter
+  MarkdownMigrationLoader.java Scans classpath for markdown migrations; parses front-matter;
+                               Hints record + loadHints() for compile/test agent guidance;
+                               Catalog record + loadCatalog() for dependency status lookup
   RecipeFrontMatter.java      Jackson-mapped front-matter record
   MigrationConfidence.java    Enum: LOW (all AI-driven migrations are LOW confidence)
   FeatureConflictException.java Thrown on overlapping feature transform ownership
+  DependencyStatus.java       Enum: REPLACED | PARTIAL | UNSUPPORTED | PASSTHROUGH | UNKNOWN
+  DependencyCatalogEntry.java Record: groupId, artifactId, status, replacedBy, notes
 
 io.transmute.inventory/
   ProjectInventory.java       Collected project metadata (Java files, root dir, warnings, errors)
   JavaFileInfo.java           Per-file metadata (path, imports, annotations, supertypes)
-  JavaProjectVisitor.java     OpenRewrite visitor that populates ProjectInventory
+  JavaProjectVisitor.java     OpenRewrite visitor that populates ProjectInventory;
+                               walks full supertype chain up to Object (not just direct supertype)
+  DependencyInfo.java         Record: groupId, artifactId, version (parsed from build file)
 
 io.transmute.tool/
   FileOperationsTool.java     @Tool: read, write, append, list files (used by AI agents)
@@ -325,13 +332,76 @@ creates the file on first use and appends subsequent entries.
 
 ---
 
-## 13. Adding a New Migration Module
+## 13. Converter Hints
 
+Migration modules can supply extra guidance to the compile-fix and test-fix agents
+by placing hint files in `src/main/resources/hints/`:
+
+```
+hints/compile-hints.md   injected into FixCompileErrorsAgent
+hints/test-hints.md      injected into FixTestFailuresAgent
+```
+
+`MarkdownMigrationLoader.loadHints()` scans the classpath for these files and
+concatenates content from every JAR that provides them (so multiple converters
+can stack hints). The result is passed to each fix agent as the `converterHints`
+`@V` variable, appended after the journal context in the `@UserMessage` template.
+
+Use hints for domain-specific knowledge that doesn't belong in the generic
+fix-agent system prompts — e.g. "never restore `io.dropwizard.*` imports",
+"resource tests must be plain unit tests, not HTTP integration tests".
+
+---
+
+## 14. Dependency Catalog
+
+Migration modules can declare the migration status of third-party dependencies by placing
+a YAML catalog at `src/main/resources/catalog/dependency-catalog.yml`.
+
+`MarkdownMigrationLoader.loadCatalog()` merges entries from all JARs on the classpath
+(keyed by `groupId:artifactId`). `MigrationWorkflow` uses the catalog to display a
+dependency status table in the plan view and to inject `buildCatalogHints()` into the
+compile-fix and test-fix agents.
+
+### Entry format
+
+```yaml
+- groupId: io.dropwizard
+  artifactId: dropwizard-core
+  status: replaced          # replaced | partial | unsupported | passthrough | unknown
+  notes: Application + Configuration handled by recipes
+
+- groupId: io.dropwizard
+  artifactId: "*"           # wildcard — matches any artifactId not explicitly listed
+  status: unsupported
+  notes: No specific recipe; verify removal or find a Helidon alternative
+```
+
+Lookup order: exact `groupId:artifactId` match first, then `groupId:*` wildcard fallback.
+Dependencies not covered by any entry default to `PASSTHROUGH` (`[=]`).
+
+### Status symbols in plan view
+
+| Symbol | Status | Meaning |
+|--------|--------|---------|
+| `[+]` | REPLACED | Full recipe coverage |
+| `[~]` | PARTIAL | Partial automation; manual steps remain |
+| `[!]` | UNSUPPORTED | No automation; manual migration required |
+| `[=]` | PASSTHROUGH | Not a source-framework dependency |
+| `[?]` | UNKNOWN | Explicit catalog entry with `status: unknown` |
+
+Only `UNSUPPORTED` and `PARTIAL` entries are injected into fix-agent hints.
+
+---
+
+## 15. Adding a New Migration Module
 
 1. Create a Maven project with no dependencies.
 2. Create `src/main/resources/recipes/` and/or `src/main/resources/features/`.
-3. Write `.recipe.md` or `.feature.md` files with front-matter + AI prompt body.
-4. Build the JAR and place it on the classpath alongside `transmute-core-*.jar`:
+3. Optionally, create `src/main/resources/hints/` for compile and test fix agent guidance.
+4. Optionally, create `src/main/resources/catalog/dependency-catalog.yml` for dependency status.
+5. Write `.recipe.md` or `.feature.md` files with front-matter + AI prompt body.
+6. Build the JAR and place it on the classpath alongside `transmute-core-*.jar`:
 
 ```bash
 java -cp transmute-core-1.0-SNAPSHOT.jar:my-migration-1.0.jar \

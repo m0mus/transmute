@@ -1,0 +1,94 @@
+- groupId: io.dropwizard
+  artifactId: dropwizard-core
+  status: replaced
+  notes: Application + Configuration handled by recipes
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-auth
+  status: unsupported
+  notes: Stubs inserted; Helidon Security wiring is manual
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-hibernate
+  status: partial
+  notes: AbstractDAO + @UnitOfWork -> TODOs; DbClient wiring manual
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-views
+  status: unsupported
+  notes: View classes stubbed; no Helidon templating equivalent
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-views-freemarker
+  status: unsupported
+  notes: View classes stubbed; no Helidon templating equivalent
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-views-mustache
+  status: unsupported
+  notes: View classes stubbed; no Helidon templating equivalent
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-client
+  status: unsupported
+  notes: JerseyClient -> TODOs; WebClient wiring manual
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-assets
+  status: unsupported
+  notes: No static asset serving equivalent in Helidon SE
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-http2
+  status: replaced
+  notes: HTTP/2 support is built into Helidon SE webserver
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-migrations
+  status: partial
+  notes: Flyway/Liquibase runs independently; DW bootstrap integration removed
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-metrics-jersey
+  status: replaced
+  notes: Annotations + MetricRegistry -> Micrometer
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-metrics-graphite
+  status: partial
+  notes: Use Micrometer GraphiteRegistry; requires manual setup
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-health
+  status: replaced
+  notes: HealthCheck API fully migrated
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-lifecycle
+  status: replaced
+  notes: Managed start/stop -> PostConstruct/PreDestroy
+
+- groupId: com.codahale.metrics
+  artifactId: metrics-core
+  status: replaced
+  notes: MetricRegistry -> MeterRegistry
+
+- groupId: org.glassfish.jersey.core
+  artifactId: jersey-common
+  status: replaced
+  notes: JAX-RS -> @Http.* annotations
+
+- groupId: io.dropwizard
+  artifactId: dropwizard-testing
+  status: unsupported
+  notes: ResourceExtension -> direct unit tests
+
+- groupId: io.dropwizard
+  artifactId: "*"
+  status: unsupported
+  notes: No specific recipe; verify removal or find a Helidon alternative
+
+- groupId: com.codahale.metrics
+  artifactId: "*"
+  status: replaced
+  notes: All Codahale metrics replaced by Micrometer (see metrics-migration feature)
