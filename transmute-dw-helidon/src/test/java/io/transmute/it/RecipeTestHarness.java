@@ -92,7 +92,7 @@ class RecipeTestHarness {
      */
     List<String> runPostchecks(String recipeName, String outputContent) {
         var migration = findMigration(recipeName);
-        var change = new FileChange("output", "", outputContent);
+        var change = FileChange.of("output", "", outputContent);
         var result = MigrationResult.success(List.of(change), List.of(), "test");
         return postcheckRunner.runMarkdownPostchecks(migration.skillPostchecks(), result);
     }

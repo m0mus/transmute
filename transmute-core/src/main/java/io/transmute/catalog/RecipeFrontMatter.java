@@ -59,12 +59,14 @@ public record RecipeFrontMatter(
     public record PostchecksFrontMatter(
             List<String> forbidImports,
             List<String> requireImports,
-            List<String> forbidPatterns) {
+            List<String> forbidPatterns,
+            List<String> requirePatterns) {
 
         public PostchecksFrontMatter {
-            forbidImports = forbidImports != null ? forbidImports : List.of();
-            requireImports = requireImports != null ? requireImports : List.of();
-            forbidPatterns = forbidPatterns != null ? forbidPatterns : List.of();
+            forbidImports   = forbidImports   != null ? forbidImports   : List.of();
+            requireImports  = requireImports  != null ? requireImports  : List.of();
+            forbidPatterns  = forbidPatterns  != null ? forbidPatterns  : List.of();
+            requirePatterns = requirePatterns != null ? requirePatterns : List.of();
         }
     }
 }

@@ -13,6 +13,18 @@ import java.util.regex.Pattern;
  */
 public class PostcheckRunner {
 
+    /** Matches {@code /* ... *}{@code /} block comments (including multi-line). */
+    private static final Pattern BLOCK_COMMENT = Pattern.compile("(?s)/\\*.*?\\*/");
+
+    /**
+     * Strips block comments from {@code s} so that postchecks do not fire on
+     * imports or patterns that the migration agent commented out via
+     * {@code /* TRANSMUTE[...]: ... *}{@code /} markers.
+     */
+    private static String stripBlockComments(String s) {
+        return s == null ? null : BLOCK_COMMENT.matcher(s).replaceAll("");
+    }
+
     public List<String> runMarkdownPostchecks(MarkdownPostchecks postchecks, MigrationResult result) {
         if (postchecks == null) {
             return List.of();
@@ -38,7 +50,8 @@ public class PostcheckRunner {
         var rules = new ArrayList<PostcheckRule>();
         for (var forbidImport : postchecks.forbidImports()) {
             rules.add(change -> {
-                if (change.after() != null && change.after().contains("import " + forbidImport)) {
+                var effective = stripBlockComments(change.after());
+                if (effective != null && effective.contains("import " + forbidImport)) {
                     return PostcheckResult.fail("Forbidden import still present: " + forbidImport);
                 }
                 return PostcheckResult.pass();
@@ -46,7 +59,8 @@ public class PostcheckRunner {
         }
         for (var requireImport : postchecks.requireImports()) {
             rules.add(change -> {
-                if (change.after() == null || !change.after().contains("import " + requireImport)) {
+                var effective = stripBlockComments(change.after());
+                if (effective == null || !effective.contains("import " + requireImport)) {
                     return PostcheckResult.fail("Required import missing: " + requireImport);
                 }
                 return PostcheckResult.pass();
@@ -55,8 +69,19 @@ public class PostcheckRunner {
         for (var forbidPattern : postchecks.forbidPatterns()) {
             var compiled = Pattern.compile(forbidPattern);
             rules.add(change -> {
-                if (change.after() != null && compiled.matcher(change.after()).find()) {
+                var effective = stripBlockComments(change.after());
+                if (effective != null && compiled.matcher(effective).find()) {
                     return PostcheckResult.fail("Forbidden pattern found: " + forbidPattern);
+                }
+                return PostcheckResult.pass();
+            });
+        }
+        for (var requirePattern : postchecks.requirePatterns()) {
+            var compiled = Pattern.compile(requirePattern);
+            rules.add(change -> {
+                var effective = stripBlockComments(change.after());
+                if (effective == null || !compiled.matcher(effective).find()) {
+                    return PostcheckResult.fail("Required pattern missing: " + requirePattern);
                 }
                 return PostcheckResult.pass();
             });

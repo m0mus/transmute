@@ -19,8 +19,9 @@ class PostcheckRunnerTest {
         var postchecks = new MarkdownPostchecks(
                 List.of("javax.ws.rs."),
                 List.of("io.helidon.webserver.http.Http"),
-                List.of("DW_MIGRATION_TODO\\[manual\\]"));
-        var change = new FileChange(
+                List.of("DW_MIGRATION_TODO\\[manual\\]"),
+                List.of());
+        var change = FileChange.of(
                 "src/main/java/acme/Foo.java",
                 "",
                 """
@@ -38,8 +39,9 @@ class PostcheckRunnerTest {
         var postchecks = new MarkdownPostchecks(
                 List.of(),
                 List.of("io.helidon.webserver.http.Http"),
+                List.of(),
                 List.of());
-        var change = new FileChange(
+        var change = FileChange.of(
                 "src/main/java/acme/Foo.java",
                 "",
                 "public class Foo {}");
@@ -55,8 +57,9 @@ class PostcheckRunnerTest {
         var postchecks = new MarkdownPostchecks(
                 List.of("javax.ws.rs."),
                 List.of(),
-                List.of("DW_MIGRATION_TODO\\[manual\\]"));
-        var change = new FileChange(
+                List.of("DW_MIGRATION_TODO\\[manual\\]"),
+                List.of());
+        var change = FileChange.of(
                 "src/main/java/acme/Foo.java",
                 "",
                 """

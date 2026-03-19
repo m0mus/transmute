@@ -7,6 +7,7 @@ import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
 import io.transmute.agent.TransmuteConfig;
 import io.transmute.agent.ModelFactory;
+import io.transmute.agent.agent.CommentOutBrokenCodeAgent;
 import io.transmute.agent.agent.FixCompileErrorsAgent;
 import io.transmute.agent.agent.FixTestFailuresAgent;
 import io.transmute.agent.agent.ProjectAnalysisAgent;
@@ -21,6 +22,7 @@ import io.transmute.catalog.MigrationPlanner;
 import io.transmute.inventory.ProjectInventory;
 import io.transmute.migration.AiMigration;
 import io.transmute.migration.FileChange;
+import io.transmute.migration.FileOutcome;
 import io.transmute.migration.Migration;
 import io.transmute.migration.MigrationResult;
 import io.transmute.migration.MigrationScope;
@@ -38,13 +40,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Runs the Transmute migration pipeline as plain sequential Java.
  *
- * <p>Pipeline (11 steps):
+ * <p>Pipeline (12 steps):
  * <ol>
  *   <li>Copy project to output dir</li>
  *   <li>Scan inventory</li>
@@ -54,18 +58,19 @@ import java.util.stream.Stream;
  *   <li>Human approval (if !autoApprove)</li>
  *   <li>Execute migrations (Java migrations + AI recipes/features)</li>
  *   <li>Human review gate (if !autoApprove)</li>
+ *   <li>Scan TODOs (collect TRANSMUTE markers)</li>
  *   <li>Compile-fix loop (max {@value #MAX_FIX_ITERATIONS} iterations)</li>
  *   <li>Test-fix loop (max {@value #MAX_FIX_ITERATIONS} iterations)</li>
  *   <li>Generate report</li>
  * </ol>
  *
  * <p>AI is used in steps 3 (project analysis), 7 (recipe/feature agent calls),
- * and 9–10 (fix agents).
+ * and 10–11 (fix agents).
  */
 public class MigrationWorkflow {
 
     private static final int MAX_FIX_ITERATIONS = 5;
-    private static final int TOTAL_STEPS = 11;
+    private static final int TOTAL_STEPS = 12;
     private static final String JOURNAL_FILE = "migration-journal.md";
 
     private final TransmuteConfig config;
@@ -81,6 +86,14 @@ public class MigrationWorkflow {
     private MigrationPlan plan;
     private long migrationsExecuted;
     private long changedFiles;
+    private int compileIterations = 0;
+    private int testIterations = 0;
+    private boolean compileSuccess = false;
+    private boolean testSuccess = false;
+    private boolean compileDegraded = false;
+    private final List<String> allPostcheckFailures = new ArrayList<>();
+    private Map<String, Long> todosByCategory = Map.of();
+    private final Map<String, FileOutcome> fileOutcomes = new LinkedHashMap<>();
 
     public MigrationWorkflow(TransmuteConfig config) {
         this.config = config;
@@ -101,6 +114,7 @@ public class MigrationWorkflow {
         approvePlan();
         executeMigrations();
         reviewGate();
+        scanTodos();
         compileFixLoop();
         testFixLoop();
         generateReport();
@@ -225,7 +239,10 @@ public class MigrationWorkflow {
 
     private void printPlanView(PlanView v) {
         int covered    = v.coveredFiles().size();
-        int notTargeted = v.totalSrc() - covered;
+        int notTargeted = (int) inventory.getJavaFiles().stream()
+                .filter(f -> !v.coveredFiles().contains(f.sourceFile()))
+                .filter(f -> !f.sourceFile().replace('\\', '/').contains("/test/"))
+                .count();
 
         // ── Overview ──────────────────────────────────────────────────────────
         System.out.println();
@@ -352,7 +369,10 @@ public class MigrationWorkflow {
         try {
             var sb = new StringBuilder();
             int covered     = v.coveredFiles().size();
-            int notTargeted = v.totalSrc() - covered;
+            int notTargeted = (int) inventory.getJavaFiles().stream()
+                    .filter(f -> !v.coveredFiles().contains(f.sourceFile()))
+                    .filter(f -> !f.sourceFile().replace('\\', '/').contains("/test/"))
+                    .count();
 
             txtSection(sb, "Migration Plan");
             sb.append("Generated : ").append(java.time.Instant.now()).append("\n");
@@ -446,6 +466,86 @@ public class MigrationWorkflow {
             Con.info(Con.DIM + "Plan saved → " + Con.RESET + planPath.getFileName());
         } catch (Exception e) {
             Con.warn("Could not save plan file: " + e.getMessage());
+        }
+    }
+
+    private void saveResultsToFile() {
+        try {
+            var v = buildPlanView();
+            var sb = new StringBuilder();
+            int covered     = v.coveredFiles().size();
+            int notTargeted = (int) inventory.getJavaFiles().stream()
+                    .filter(f -> !v.coveredFiles().contains(f.sourceFile()))
+                    .filter(f -> !f.sourceFile().replace('\\', '/').contains("/test/"))
+                    .count();
+
+            txtSection(sb, "Migration Results");
+            sb.append("Generated : ").append(java.time.Instant.now()).append("\n");
+            sb.append("Project   : ").append(config.projectDir()).append("\n\n");
+
+            // Outcome summary
+            long converted  = fileOutcomes.values().stream().filter(o -> o == FileOutcome.CONVERTED).count();
+            long commented  = fileOutcomes.values().stream().filter(o -> o == FileOutcome.COMMENTED).count();
+            long unchanged  = fileOutcomes.values().stream().filter(o -> o == FileOutcome.UNCHANGED).count();
+            long failed     = fileOutcomes.values().stream().filter(o -> o == FileOutcome.FAILED).count();
+
+            txtSection(sb, "Project Overview");
+            sb.append(String.format("  Source files  : %d%n", v.totalSrc()));
+            sb.append(String.format("  Test files    : %d%n", v.totalTest()));
+            sb.append(String.format("  Covered       : %d%n", covered));
+            sb.append(String.format("  Not targeted  : %d%n", notTargeted));
+            sb.append(String.format("  Migrations    : %d%n", plan.entries().size()));
+            sb.append(String.format("  Project-scoped: %d%n", v.projectScoped().size()));
+            sb.append("\n");
+
+            txtSection(sb, "Outcomes");
+            if (converted > 0)  sb.append(String.format("  [+] converted  : %d%n", converted));
+            if (commented > 0)  sb.append(String.format("  [!] commented  : %d%n", commented));
+            if (unchanged > 0)  sb.append(String.format("  [=] unchanged  : %d%n", unchanged));
+            if (failed > 0)     sb.append(String.format("  [x] failed     : %d%n", failed));
+            sb.append(String.format("  compile        : %s%n",
+                    compileDegraded ? "degraded" : compileSuccess ? "success" : "failed"));
+            sb.append(String.format("  test           : %s%n",
+                    testSuccess ? "success" : testIterations == 0 ? "skipped" : "failed"));
+            sb.append("\n");
+
+            if (!v.coveredFiles().isEmpty()) {
+                txtSection(sb, "File Results");
+                int wFile = v.coveredFiles().stream()
+                        .mapToInt(String::length).max().orElse(40) + 2;
+                int wRecipe = v.fileRecipes().values().stream()
+                        .mapToInt(r -> String.join(", ", r).length()).max().orElse(20) + 2;
+                int wOutcome = 10;
+                var hdr = padRight("File", wFile) + padRight("Recipe", wRecipe)
+                        + padRight("Features", 30) + "Outcome";
+                sb.append("  ").append(hdr).append("\n");
+                sb.append("  ").append("─".repeat(hdr.length())).append("\n");
+                for (var file : v.coveredFiles()) {
+                    var recipes  = v.fileRecipes().getOrDefault(file, List.of());
+                    var features = v.fileFeatures().getOrDefault(file, List.of());
+                    var outcome  = fileOutcomes.get(file);
+                    var outcomeSymbol = outcome == null ? "—" : switch (outcome) {
+                        case CONVERTED -> "[+] converted";
+                        case PARTIAL   -> "[~] partial";
+                        case COMMENTED -> "[!] commented";
+                        case UNCHANGED -> "[=] unchanged";
+                        case FAILED    -> "[x] failed";
+                    };
+                    sb.append("  ")
+                      .append(padRight(file, wFile))
+                      .append(padRight(recipes.isEmpty() ? "—" : String.join(", ", recipes), wRecipe))
+                      .append(padRight(features.isEmpty() ? "—" : String.join(", ", features), 30))
+                      .append(outcomeSymbol)
+                      .append("\n");
+                }
+                sb.append("\n");
+            }
+
+            var resultsPath = Path.of(config.outputDir()).resolve("migration-results.txt");
+            Files.writeString(resultsPath, sb.toString());
+            Con.info(Con.DIM + "Results saved → " + Con.RESET + resultsPath.getFileName());
+        } catch (Exception e) {
+            Con.warn("Could not save results file: " + e.getMessage());
         }
     }
 
@@ -560,12 +660,79 @@ public class MigrationWorkflow {
         Con.rule();
     }
 
+    private void scanTodos() {
+        Con.step(9, TOTAL_STEPS, "Scanning for TRANSMUTE TODOs");
+        var todoPattern = Pattern.compile("TRANSMUTE\\[(\\w+)\\]");
+        var outputPath = Path.of(config.outputDir());
+
+        // category → list of "  relPath:lineNum  <line>"
+        var byCategory = new LinkedHashMap<String, List<String>>();
+
+        try (var walk = Files.walk(outputPath)) {
+            walk.filter(p -> p.toString().endsWith(".java"))
+                .forEach(javaFile -> {
+                    var rel = outputPath.relativize(javaFile).toString().replace('\\', '/');
+                    try {
+                        var lines = Files.readAllLines(javaFile);
+                        for (int ln = 0; ln < lines.size(); ln++) {
+                            var line = lines.get(ln);
+                            var m = todoPattern.matcher(line);
+                            if (m.find()) {
+                                var cat = m.group(1);
+                                byCategory.computeIfAbsent(cat, k -> new ArrayList<>())
+                                          .add("  " + rel + ":" + (ln + 1) + "  " + line.stripLeading());
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                });
+        } catch (Exception e) {
+            Con.warn("TODO scan failed: " + e.getMessage());
+        }
+
+        // Build todosByCategory map (category → count)
+        todosByCategory = byCategory.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> (long) e.getValue().size(),
+                        (a, b) -> a, LinkedHashMap::new));
+
+        // Write migration-todos.txt
+        if (!byCategory.isEmpty()) {
+            try {
+                var sb = new StringBuilder();
+                sb.append("Migration TODOs\n");
+                sb.append("─".repeat(15)).append("\n\n");
+                for (var entry : byCategory.entrySet()) {
+                    sb.append(entry.getKey()).append("  (").append(entry.getValue().size()).append(")\n");
+                    for (var loc : entry.getValue()) {
+                        sb.append(loc).append("\n");
+                    }
+                    sb.append("\n");
+                }
+                Files.writeString(outputPath.resolve("migration-todos.txt"), sb.toString());
+            } catch (Exception e) {
+                Con.warn("Could not write migration-todos.txt: " + e.getMessage());
+            }
+        }
+
+        if (byCategory.isEmpty()) {
+            Con.ok("No TRANSMUTE TODOs found");
+        } else {
+            long total = todosByCategory.values().stream().mapToLong(Long::longValue).sum();
+            var parts = todosByCategory.entrySet().stream()
+                    .map(e -> e.getValue() + " " + e.getKey())
+                    .collect(Collectors.joining(", "));
+            Con.info("Found " + Con.bold(total + " TRANSMUTE TODOs") + ": " + parts);
+        }
+        Con.rule();
+    }
+
     private void compileFixLoop() {
-        Con.step(9, TOTAL_STEPS, "Compile-fix loop  (max " + MAX_FIX_ITERATIONS + " attempts)");
+        Con.step(10, TOTAL_STEPS, "Compile-fix loop  (max " + MAX_FIX_ITERATIONS + " attempts)");
         for (int i = 1; i <= MAX_FIX_ITERATIONS; i++) {
             System.out.println("  " + Con.DIM + "Compiling… [" + i + "/" + MAX_FIX_ITERATIONS + "]" + Con.RESET);
             var result = new CompileProjectTool(config.activeProfiles()).runCompile(config.outputDir());
             if (result.success()) {
+                compileSuccess = true;
+                compileIterations = i;
                 Con.ok("Compilation successful");
                 Con.rule();
                 return;
@@ -573,7 +740,16 @@ public class MigrationWorkflow {
             Con.error("Compilation failed (attempt " + i + "/" + MAX_FIX_ITERATIONS + ")");
             printFirstLines(result.errors(), 30);
             if (i == MAX_FIX_ITERATIONS) {
-                throw new RuntimeException("Compile failed after " + MAX_FIX_ITERATIONS + " attempts.");
+                Con.warn("Max iterations reached — invoking comment-out agent…");
+                var catalogSection = buildCatalogHints();
+                var effectiveHints = Stream.of(catalogSection, hints.compileHints())
+                        .filter(s -> s != null && !s.isBlank()).collect(Collectors.joining("\n\n"));
+                buildCommentOutAgent().fix(config.outputDir(), result.errors(), readJournal(), effectiveHints);
+                compileIterations = MAX_FIX_ITERATIONS;
+                compileDegraded = true;
+                Con.warn("Compilation may still have errors — broken constructs were commented out");
+                Con.rule();
+                return;
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking compile-fix agent…" + Con.RESET);
             var catalogSection = buildCatalogHints();
@@ -585,11 +761,13 @@ public class MigrationWorkflow {
     }
 
     private void testFixLoop() {
-        Con.step(10, TOTAL_STEPS, "Test-fix loop  (max " + MAX_FIX_ITERATIONS + " attempts)");
+        Con.step(11, TOTAL_STEPS, "Test-fix loop  (max " + MAX_FIX_ITERATIONS + " attempts)");
         for (int i = 1; i <= MAX_FIX_ITERATIONS; i++) {
             System.out.println("  " + Con.DIM + "Running tests… [" + i + "/" + MAX_FIX_ITERATIONS + "]" + Con.RESET);
             var result = new RunTestsTool(config.activeProfiles()).runMvnTest(config.outputDir());
             if (result.success()) {
+                testSuccess = true;
+                testIterations = i;
                 Con.ok("All tests passed");
                 Con.rule();
                 return;
@@ -597,6 +775,7 @@ public class MigrationWorkflow {
             Con.error("Tests failed (attempt " + i + "/" + MAX_FIX_ITERATIONS + ")");
             printFirstLines(result.output(), 30);
             if (i == MAX_FIX_ITERATIONS) {
+                testIterations = MAX_FIX_ITERATIONS;
                 throw new RuntimeException("Tests failed after " + MAX_FIX_ITERATIONS + " attempts.");
             }
             System.out.println("  " + Con.YELLOW + "→ Invoking test-fix agent…" + Con.RESET);
@@ -609,13 +788,22 @@ public class MigrationWorkflow {
     }
 
     private void generateReport() throws Exception {
-        Con.step(11, TOTAL_STEPS, "Generating migration report");
+        Con.step(12, TOTAL_STEPS, "Generating migration report");
         var report = new LinkedHashMap<String, Object>();
         report.put("sourceDir", config.projectDir());
         report.put("outputDir", config.outputDir());
         report.put("migrationsExecuted", migrationsExecuted);
         report.put("filesChanged", changedFiles);
         report.put("dryRun", config.dryRun());
+        report.put("compileOutcome", compileDegraded ? "degraded" : compileSuccess ? "success" : "failed");
+        report.put("testOutcome", testSuccess ? "success" : testIterations == 0 ? "skipped" : "failed");
+        report.put("compileIterations", compileIterations);
+        report.put("testIterations", testIterations);
+        report.put("postchecksFailures", allPostcheckFailures);
+        report.put("todosByCategory", todosByCategory);
+        var fileOutcomesStr = new LinkedHashMap<String, String>();
+        fileOutcomes.forEach((f, o) -> fileOutcomesStr.put(f, o.name().toLowerCase()));
+        report.put("fileOutcomes", fileOutcomesStr);
 
         var reportPath = Path.of(config.outputDir(), "migration-report.json");
         if (!config.dryRun()) {
@@ -624,6 +812,7 @@ public class MigrationWorkflow {
         } else {
             Con.info(Con.DIM + "[dry-run] Would write report to: " + reportPath + Con.RESET);
         }
+        saveResultsToFile();
         Con.rule();
     }
 
@@ -638,6 +827,13 @@ public class MigrationWorkflow {
 
     private FixTestFailuresAgent buildTestFixAgent() {
         return AiServices.builder(FixTestFailuresAgent.class)
+                .chatModel(ModelFactory.create())
+                .tools(new MigrationTools(config.outputDir(), config.activeProfiles()).codeEditTools())
+                .build();
+    }
+
+    private CommentOutBrokenCodeAgent buildCommentOutAgent() {
+        return AiServices.builder(CommentOutBrokenCodeAgent.class)
                 .chatModel(ModelFactory.create())
                 .tools(new MigrationTools(config.outputDir(), config.activeProfiles()).codeEditTools())
                 .build();
@@ -699,6 +895,7 @@ public class MigrationWorkflow {
             beforeContent = Files.readString(Path.of(outputDir).resolve(relPath));
         } catch (Exception e) {
             Con.error("Cannot read " + relPath + ": " + e.getMessage());
+            fileOutcomes.put(sourceFile, FileOutcome.FAILED);
             return ApplyResult.failed();
         }
 
@@ -711,6 +908,7 @@ public class MigrationWorkflow {
 
         if (config.dryRun()) {
             System.out.println("    " + Con.DIM + "[dry-run] skipping agent invocation" + Con.RESET);
+            fileOutcomes.put(sourceFile, FileOutcome.FAILED);
             return ApplyResult.failed();
         }
 
@@ -726,6 +924,7 @@ public class MigrationWorkflow {
                             + "Read the file, apply every section above, write it back.");
         } catch (Exception e) {
             Con.error("Agent failed for " + relPath + ": " + e.getMessage());
+            fileOutcomes.put(sourceFile, FileOutcome.FAILED);
             return ApplyResult.failed();
         }
 
@@ -734,10 +933,12 @@ public class MigrationWorkflow {
             afterContent = Files.readString(Path.of(outputDir).resolve(relPath));
         } catch (Exception e) {
             Con.error("Cannot read result for " + relPath + ": " + e.getMessage());
+            fileOutcomes.put(sourceFile, FileOutcome.FAILED);
             return ApplyResult.failed();
         }
 
-        var change = new FileChange(sourceFile, beforeContent, afterContent);
+        var change = FileChange.of(sourceFile, beforeContent, afterContent);
+        fileOutcomes.put(sourceFile, change.outcome());
         var result = MigrationResult.success(List.of(change), List.of(), "migration applied");
 
         for (var aiMigration : aiMigrations) {
@@ -745,6 +946,7 @@ public class MigrationWorkflow {
             if (!failures.isEmpty()) {
                 Con.warn("Postcheck failures (" + aiMigration.skillName() + ") for " + relPath + ":");
                 failures.forEach(f -> System.out.println("      " + Con.YELLOW + f + Con.RESET));
+                allPostcheckFailures.addAll(failures);
             }
         }
         return new ApplyResult(true, change.isChanged());
@@ -759,6 +961,22 @@ public class MigrationWorkflow {
                 You are an expert Java developer executing a framework migration.
                 Apply ALL sections below. Each section declares what it owns and what transformations to apply.
                 Do not modify anything not covered by a section below.
+
+                ## Universal Fallback Rule
+                If any construct cannot be converted to the target framework, DO NOT leave broken
+                or uncompilable code. Instead comment it out and annotate it:
+
+                  // TRANSMUTE[unsupported]: <why this cannot be converted>
+
+                For multi-line blocks:
+                  /* TRANSMUTE[unsupported]: <description>
+                  <original code>
+                  */
+
+                Use category `manual` for constructs the developer must convert manually,
+                `unsupported` when no equivalent exists in the target framework,
+                `recheck` when the conversion is uncertain and needs review.
+                This rule applies to every recipe and feature section below.
 
                 ## Migration Journal
                 After completing your changes, append a brief summary line to \

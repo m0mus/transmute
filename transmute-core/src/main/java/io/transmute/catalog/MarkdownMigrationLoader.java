@@ -1,5 +1,6 @@
 package io.transmute.catalog;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.github.classgraph.ClassGraph;
@@ -11,7 +12,9 @@ import io.transmute.migration.RecipeKind;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Scans the classpath for recipes ({@code recipes/*.recipe.md}) and features
@@ -129,7 +132,8 @@ public class MarkdownMigrationLoader {
             postchecks = new MarkdownPostchecks(
                     fm.postchecks().forbidImports(),
                     fm.postchecks().requireImports(),
-                    fm.postchecks().forbidPatterns());
+                    fm.postchecks().forbidPatterns(),
+                    fm.postchecks().requirePatterns());
         } else {
             postchecks = MarkdownPostchecks.empty();
         }
@@ -175,6 +179,33 @@ public class MarkdownMigrationLoader {
             }
         }
         return new Hints(compile.toString().trim(), test.toString().trim());
+    }
+
+    public record Catalog(Map<String, DependencyCatalogEntry> entries) {}
+
+    /**
+     * Loads dependency catalog entries from {@code catalog/*.yml} files on the classpath.
+     * Content from all JARs is merged; later entries override earlier ones for the same coordinate.
+     */
+    public Catalog loadCatalog() {
+        var entries = new LinkedHashMap<String, DependencyCatalogEntry>();
+        try (var scan = new ClassGraph().acceptPaths("catalog").scan()) {
+            for (var r : scan.getAllResources()) {
+                var path = r.getPath();
+                if (!path.endsWith(".yml") && !path.endsWith(".yaml")) continue;
+                try {
+                    var list = YAML.readValue(r.load(),
+                            new TypeReference<List<DependencyCatalogEntry>>() {});
+                    for (var e : list) {
+                        entries.put(e.groupId() + ":" + e.artifactId(), e);
+                    }
+                } catch (Exception e) {
+                    System.err.println("[MarkdownMigrationLoader] Failed to load catalog "
+                            + path + ": " + e.getMessage());
+                }
+            }
+        }
+        return new Catalog(Map.copyOf(entries));
     }
 
     /**

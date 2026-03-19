@@ -10,15 +10,17 @@ import java.util.List;
 public record MarkdownPostchecks(
         List<String> forbidImports,
         List<String> requireImports,
-        List<String> forbidPatterns) {
+        List<String> forbidPatterns,
+        List<String> requirePatterns) {
 
     public MarkdownPostchecks {
-        forbidImports = forbidImports != null ? List.copyOf(forbidImports) : List.of();
+        forbidImports  = forbidImports  != null ? List.copyOf(forbidImports)  : List.of();
         requireImports = requireImports != null ? List.copyOf(requireImports) : List.of();
         forbidPatterns = forbidPatterns != null ? List.copyOf(forbidPatterns) : List.of();
+        requirePatterns = requirePatterns != null ? List.copyOf(requirePatterns) : List.of();
     }
 
     public static MarkdownPostchecks empty() {
-        return new MarkdownPostchecks(List.of(), List.of(), List.of());
+        return new MarkdownPostchecks(List.of(), List.of(), List.of(), List.of());
     }
 }
