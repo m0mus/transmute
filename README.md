@@ -13,26 +13,29 @@ For the full design, rationale, and API reference see [PROJECT.md](PROJECT.md).
 ## How it works
 
 ```
-1. Copy project to an output directory (original is untouched)
-2. Scan the project: build a ProjectInventory of all Java types, imports, annotations,
-   and inter-module relationships
-3. Analyze project: AI reads inventory + key files → structured summary
-   (prepended to all recipe prompts for broader context)
-4. Discover migrations: load *.recipe.md / *.feature.md files from the classpath
-5. Plan: evaluate trigger conditions against the inventory; resolve target files;
-   sort by order; derive execution scope
-6. Human approval gate — the plan is shown before anything is executed
-7. Execute migrations in order:
-     • Recipes (FILE scope) — one AI agent call per file, all matching recipes merged
-     • Project-scoped migrations — one AI agent call for the whole output directory
-       (can modify multiple files)
-     • Each agent appends to a migration journal for cross-recipe context
-8. Human review gate
-9. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
+ 1. Copy project to an output directory (original is untouched)
+ 2. Scan the project: build a ProjectInventory of all Java types, imports, annotations,
+    and inter-module relationships
+ 3. Analyze project: AI reads inventory + key files → structured summary
+    (prepended to all recipe prompts for broader context)
+ 4. Discover migrations: load *.recipe.md / *.feature.md files from the classpath
+ 5. Plan: evaluate trigger conditions against the inventory; resolve target files;
+    sort by order; show file-centric plan; save migration-plan.txt
+ 6. Human approval gate — the plan is shown before anything is executed
+ 7. Execute migrations in order:
+      • Recipes (FILE scope) — one AI agent call per file, all matching recipes merged
+      • Project-scoped migrations — one AI agent call for the whole output directory
+        (can modify multiple files)
+      • Each agent appends to a migration journal for cross-recipe context
+ 8. Human review gate
+ 9. Scan for TRANSMUTE TODOs: collect TRANSMUTE[CATEGORY] markers left in migrated files;
+    save migration-todos.txt
+10. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
      — reads migration journal for context on what was changed and why
-10. Test-fix loop: AI agent fixes test failures (max 5 iterations)
+11. Test-fix loop: AI agent fixes test failures (max 5 iterations)
      — reads migration journal for context on what was changed and why
-11. Generate a migration report (JSON)
+12. Generate a migration report: migration-report.json + migration-results.txt;
+    print a styled console summary (outcomes, file results, TODOs, postcheck failures)
 ```
 
 Migrations are plain `.recipe.md` or `.feature.md` files. The front-matter declares
@@ -60,13 +63,13 @@ Migrate usages of OldApi to NewApi. Replace ...
 Transmute/
   transmute-core/       All Java: inventory, planner, workflow,
                         AI agents, CLI entry point, tool implementations
-  transmute-dw-helidon/ Pure markdown: recipes and features for Dropwizard 3 → Helidon 4 SE
+  transmute-dw-helidon/ Pure markdown: recipes, features, and hints for Dropwizard 3 → Helidon 4 SE
 ```
 
-`transmute-dw-helidon` contains **zero production Java** — only `.recipe.md` and
-`.feature.md` resource files. It depends on `transmute-core` for test-scope integration
-tests only. Migration modules are assembled at runtime by placing the two JARs on the
-classpath together.
+`transmute-dw-helidon` contains **zero production Java** — only `.recipe.md`,
+`.feature.md`, and `.md` hint resource files. It depends on `transmute-core` for
+test-scope integration tests only. Migration modules are assembled at runtime by placing
+the two JARs on the classpath together.
 
 ### Key packages in transmute-core
 
@@ -190,6 +193,12 @@ java -cp transmute-core.jar;transmute-dw-helidon.jar ^
 
 A migration module is a Maven project with no dependencies. Place `.recipe.md` or
 `.feature.md` files under `src/main/resources/recipes/` or `src/main/resources/features/`.
+Optionally, add converter hints under `src/main/resources/hints/`.
+
+**Converter hints** (optional): place `hints/compile-hints.md` and/or
+`hints/test-hints.md` under `src/main/resources/hints/`. The framework loads
+and concatenates hints from all JARs on the classpath and injects them into
+the compile-fix and test-fix agents.
 
 **Front-matter fields:**
 

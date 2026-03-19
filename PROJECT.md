@@ -47,7 +47,7 @@ scope only, for recipe integration tests. The same pattern applies to any migrat
 
 ```
 TransmuteCli (entry point)
-  └── MigrationWorkflow (11-step sequential pipeline)
+  └── MigrationWorkflow (12-step sequential pipeline)
         │
         ├── [1]  CopyProjectTool       copy source → output dir (original untouched)
         ├── [2]  JavaProjectVisitor    build ProjectInventory (Java types, imports,
@@ -70,11 +70,14 @@ TransmuteCli (entry point)
         │
         ├── [8]  ReviewGate            human gate (skipped if --auto-approve)
         │
-        ├── [9]  CompileFixLoop        mvn compile → FixCompileErrorsAgent (max 5 iterations)
+        ├── [9]  ScanTodos             scan migrated files for TRANSMUTE[CATEGORY] markers;
+        │                              write migration-todos.txt
+        ├── [10] CompileFixLoop        mvn compile → FixCompileErrorsAgent (max 5 iterations)
         │                              (reads migration-journal.md for context)
-        ├── [10] TestFixLoop           mvn test    → FixTestFailuresAgent  (max 5 iterations)
+        ├── [11] TestFixLoop           mvn test    → FixTestFailuresAgent  (max 5 iterations)
         │                              (reads migration-journal.md for context)
-        └── [11] GenerateReport        writes migration-report.json
+        └── [12] GenerateReport        writes migration-report.json + migration-results.txt;
+                                       prints styled console summary
 ```
 
 ---
@@ -180,7 +183,7 @@ io.transmute.agent/
     FixCompileErrorsAgent.java  AI service (LC4j): fixes compile errors using file I/O tools
     FixTestFailuresAgent.java   AI service (LC4j): fixes test failures using file I/O tools
   workflow/
-    MigrationWorkflow.java    10-step sequential pipeline; ANSI-colored console output
+    MigrationWorkflow.java    12-step sequential pipeline; ANSI-colored console output
 
 io.transmute.migration/
   Migration.java              Planning interface: name(), order()
@@ -246,9 +249,10 @@ interactions. Three providers are supported:
 | 4–6 | No | Pure Java |
 | 7 — Recipe/Feature execution | **Yes** | `SingleFileAgent` (FILE) or project-scope agent |
 | 8 | No | Human gate |
-| 9 — Compile fix | **Yes** | `FixCompileErrorsAgent` with file I/O tools |
-| 10 — Test fix | **Yes** | `FixTestFailuresAgent` with file I/O tools |
-| 11 | No | JSON report |
+| 9 | No | TODO scan |
+| 10 — Compile fix | **Yes** | `FixCompileErrorsAgent` with file I/O tools |
+| 11 — Test fix | **Yes** | `FixTestFailuresAgent` with file I/O tools |
+| 12 | No | JSON report + console summary |
 
 ### Prompt logging
 
