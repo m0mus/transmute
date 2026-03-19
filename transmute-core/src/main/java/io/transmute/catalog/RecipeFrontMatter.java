@@ -16,7 +16,7 @@ public record RecipeFrontMatter(
         String type,
         int order,
         List<TriggerFrontMatter> triggers,
-        TransformsFrontMatter transforms,
+        OwnsFrontMatter owns,
         PostchecksFrontMatter postchecks) {
 
     /**
@@ -28,29 +28,29 @@ public record RecipeFrontMatter(
             List<String> imports,
             List<String> annotations,
             List<String> superTypes,
-            List<String> signals,
-            List<String> compileErrors,
             List<String> files) {
 
         public TriggerFrontMatter {
             imports = imports != null ? imports : List.of();
             annotations = annotations != null ? annotations : List.of();
             superTypes = superTypes != null ? superTypes : List.of();
-            signals = signals != null ? signals : List.of();
-            compileErrors = compileErrors != null ? compileErrors : List.of();
             files = files != null ? files : List.of();
         }
     }
 
-    /** The {@code transforms} block — declares FQN ownership for features. */
+    /** The {@code owns} block — declares FQN ownership for features. */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record TransformsFrontMatter(
+    public record OwnsFrontMatter(
             List<String> annotations,
-            List<String> types) {
+            List<String> types,
+            List<String> excludeAnnotations,
+            List<String> excludeTypes) {
 
-        public TransformsFrontMatter {
-            annotations = annotations != null ? annotations : List.of();
-            types = types != null ? types : List.of();
+        public OwnsFrontMatter {
+            annotations        = annotations        != null ? annotations        : List.of();
+            types              = types              != null ? types              : List.of();
+            excludeAnnotations = excludeAnnotations != null ? excludeAnnotations : List.of();
+            excludeTypes       = excludeTypes       != null ? excludeTypes       : List.of();
         }
     }
 

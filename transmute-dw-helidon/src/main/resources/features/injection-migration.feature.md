@@ -7,6 +7,24 @@ triggers:
   - imports: [org.jvnet.hk2]
   - imports: [javax.inject]
   - imports: [jakarta.inject]
+owns:
+  annotations:
+    - com.google.inject.Inject
+    - com.google.inject.Singleton
+    - com.google.inject.Provides
+    - javax.inject.Inject
+    - javax.inject.Singleton
+    - javax.inject.Named
+    - jakarta.inject.Inject
+    - jakarta.inject.Singleton
+    - jakarta.inject.Named
+    - org.jvnet.hk2.annotations.Service
+    - org.glassfish.hk2.api.Contract
+    - org.glassfish.hk2.api.Immediate
+    - org.glassfish.hk2.api.PerLookup
+  types:
+    - com.google.inject.AbstractModule
+    - com.google.inject.Module
 postchecks:
   forbidImports:
     - com.google.inject
@@ -32,7 +50,7 @@ Replace injection annotations according to this table:
 | `@javax.inject.Inject` | `@Service.Inject` |
 | `@jakarta.inject.Inject` | `@Service.Inject` |
 | `@Named("x")` (any package) | `@Service.Named("x")` |
-| `@com.google.inject.Provides` | `// TODO: create @Service.Singleton factory class` |
+| `@com.google.inject.Provides` | `// TRANSMUTE[manual]: create @Service.Singleton factory class` |
 
 Apply replacements to field, constructor, and method injection sites.
 
@@ -40,16 +58,16 @@ Apply replacements to field, constructor, and method injection sites.
 
 If the file extends `AbstractModule` or `com.google.inject.Module`:
 
-1. Add a class-level TODO comment:
+1. Add a class-level `TRANSMUTE[manual]` comment:
    ```java
-   // TODO: remove Guice module — service registry auto-discovers @Service.Singleton classes
+   // TRANSMUTE[manual]: remove Guice module — service registry auto-discovers @Service.Singleton classes
    ```
 2. Do **not** delete the class body automatically — leave it for manual review.
 
 If the class registers or uses `GuiceBundle` or `GuiceApplicationBundle`:
-- Add a TODO comment on the relevant line:
+- Add a `TRANSMUTE[manual]` comment on the relevant line:
   ```java
-  // TODO: remove GuiceBundle — Helidon service registry replaces Guice DI
+  // TRANSMUTE[manual]: remove GuiceBundle — Helidon service registry replaces Guice DI
   ```
 
 ## HK2 annotations
@@ -59,7 +77,7 @@ If the class registers or uses `GuiceBundle` or `GuiceApplicationBundle`:
 | `@org.jvnet.hk2.annotations.Service` | `@Service.Singleton` |
 | `@org.glassfish.hk2.api.Contract` | Remove — implementing the interface is sufficient |
 | `@org.glassfish.hk2.api.Immediate` | `@Service.Singleton` |
-| `@org.glassfish.hk2.api.PerLookup` | `// TODO: PerLookup has no direct equivalent; review lifecycle` |
+| `@org.glassfish.hk2.api.PerLookup` | `// TRANSMUTE[manual]: PerLookup has no direct equivalent; review lifecycle` |
 
 ## Imports
 

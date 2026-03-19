@@ -4,6 +4,13 @@ type: feature
 triggers:
   - imports: [io.dropwizard.hibernate]
   - imports: [io.dropwizard.db]
+owns:
+  annotations:
+    - io.dropwizard.hibernate.UnitOfWork
+  types:
+    - io.dropwizard.hibernate.AbstractDAO
+    - io.dropwizard.hibernate.HibernateBundle
+    - org.hibernate.SessionFactory
 postchecks:
   forbidImports:
     - io.dropwizard.hibernate
@@ -18,7 +25,7 @@ using the Helidon DB Client (`io.helidon.dbclient.DbClient`).
 
 **IMPORTANT:** For every method that has a `@UnitOfWork` annotation on it, you MUST:
 1. Delete the `@UnitOfWork` line from the method.
-2. Insert a TODO comment on the line directly above the method signature.
+2. Insert a `TRANSMUTE[manual]` comment on the line directly above the method signature.
 3. Remove the `import io.dropwizard.hibernate.UnitOfWork` import line.
 
 Example — before:
@@ -39,13 +46,13 @@ public List<Person> listPeople() {
 Example — after:
 ```java
 @POST
-// DW_MIGRATION_TODO[manual]: was @UnitOfWork — manage transaction manually via DbClient
+// TRANSMUTE[manual]: was @UnitOfWork — manage transaction manually via DbClient
 public Person createPerson(@Valid Person person) {
     return peopleDAO.create(person);
 }
 
 @GET
-// DW_MIGRATION_TODO[manual]: was @UnitOfWork — manage transaction manually via DbClient
+// TRANSMUTE[manual]: was @UnitOfWork — manage transaction manually via DbClient
 public List<Person> listPeople() {
     return peopleDAO.findAll();
 }
@@ -57,58 +64,58 @@ If the class extends `AbstractDAO<T>`:
 
 1. Remove `extends AbstractDAO<T>` from the class declaration.
 2. Add `@Service.Singleton` to the class if not already present.
-3. Add a class-level TODO comment:
+3. Add a class-level `TRANSMUTE[manual]` comment:
    ```java
-   // DW_MIGRATION_TODO[manual]: was AbstractDAO<T> — replace with io.helidon.dbclient.DbClient injection
+   // TRANSMUTE[manual]: was AbstractDAO<T> — replace with io.helidon.dbclient.DbClient injection
    ```
-4. Replace each `currentSession()` call with a TODO comment on the same line:
+4. Replace each `currentSession()` call with a `TRANSMUTE[manual]` comment on the same line:
    ```java
-   // DW_MIGRATION_TODO[manual]: was currentSession() — use @Service.Inject DbClient dbClient
+   // TRANSMUTE[manual]: was currentSession() — use @Service.Inject DbClient dbClient
    ```
-5. Replace each `list(query)` call with a TODO comment on the same line:
+5. Replace each `list(query)` call with a `TRANSMUTE[manual]` comment on the same line:
    ```java
-   // DW_MIGRATION_TODO[manual]: was list(query) — use dbClient.execute().namedQuery("...").execute()
+   // TRANSMUTE[manual]: was list(query) — use dbClient.execute().namedQuery("...").execute()
    ```
-6. Replace each `uniqueResult(query)` call with a TODO comment on the same line:
+6. Replace each `uniqueResult(query)` call with a `TRANSMUTE[manual]` comment on the same line:
    ```java
-   // DW_MIGRATION_TODO[manual]: was uniqueResult(query) — use dbClient.execute().namedGet("...").execute()
+   // TRANSMUTE[manual]: was uniqueResult(query) — use dbClient.execute().namedGet("...").execute()
    ```
-7. Replace each `persist(entity)` call with a TODO comment on the same line:
+7. Replace each `persist(entity)` call with a `TRANSMUTE[manual]` comment on the same line:
    ```java
-   // DW_MIGRATION_TODO[manual]: was persist(entity) — use dbClient.execute().createNamedInsert("...").execute()
+   // TRANSMUTE[manual]: was persist(entity) — use dbClient.execute().createNamedInsert("...").execute()
    ```
 
-If any other `AbstractDAO`-inherited method call cannot be mapped, add a generic TODO:
+If any other `AbstractDAO`-inherited method call cannot be mapped, add a generic `TRANSMUTE[manual]` marker:
 ```java
-// DW_MIGRATION_TODO[manual]: was AbstractDAO method — adapt to Helidon DbClient API
+// TRANSMUTE[manual]: was AbstractDAO method — adapt to Helidon DbClient API
 ```
 
 ## HibernateBundle / DBIFactory / JdbiFactory in Application class
 
 If this file is the Dropwizard `Application` class (or any class that constructs or configures
-`HibernateBundle`, `DBIFactory`, or `JdbiFactory`), add a TODO comment at each usage site:
+`HibernateBundle`, `DBIFactory`, or `JdbiFactory`), add a `TRANSMUTE[manual]` comment at each usage site:
 
 ```java
-// DW_MIGRATION_TODO[manual]: was HibernateBundle — configure io.helidon.dbclient.DbClient via application.yaml
+// TRANSMUTE[manual]: was HibernateBundle — configure io.helidon.dbclient.DbClient via application.yaml
 // See: https://helidon.io/docs/v4/se/dbclient
 ```
 
 ```java
-// DW_MIGRATION_TODO[manual]: was DBIFactory/JdbiFactory — configure io.helidon.dbclient.DbClient via application.yaml
+// TRANSMUTE[manual]: was DBIFactory/JdbiFactory — configure io.helidon.dbclient.DbClient via application.yaml
 // See: https://helidon.io/docs/v4/se/dbclient
 ```
 
 Remove the bundle/factory field declarations and constructor/initializer calls after adding the
-TODO comments.
+`TRANSMUTE[manual]` comments.
 
 ## SessionFactory injection
 
 If the class injects or receives a `SessionFactory` parameter:
 
 1. Remove the `SessionFactory` field or constructor parameter.
-2. Add a TODO comment in its place:
+2. Add a `TRANSMUTE[manual]` comment in its place:
    ```java
-   // DW_MIGRATION_TODO[manual]: was SessionFactory — inject io.helidon.dbclient.DbClient instead:
+   // TRANSMUTE[manual]: was SessionFactory — inject io.helidon.dbclient.DbClient instead:
    // @Service.Inject
    // private DbClient dbClient;
    ```

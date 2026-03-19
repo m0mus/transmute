@@ -19,8 +19,8 @@ public class AiMigration implements Migration, AiMigrationMetadata {
     private final MarkdownPostchecks postchecks;
     private final RecipeKind type;
     private final MigrationScope scope;
-    private final List<String> transformAnnotations;
-    private final List<String> transformTypes;
+    private final List<String> ownsAnnotations;
+    private final List<String> ownsTypes;
     private final String body;
 
     public AiMigration(
@@ -29,8 +29,8 @@ public class AiMigration implements Migration, AiMigrationMetadata {
             List<MarkdownTrigger> triggers,
             MarkdownPostchecks postchecks,
             RecipeKind type,
-            List<String> transformAnnotations,
-            List<String> transformTypes,
+            List<String> ownsAnnotations,
+            List<String> ownsTypes,
             String body) {
         this.name = name;
         this.order = order;
@@ -38,8 +38,8 @@ public class AiMigration implements Migration, AiMigrationMetadata {
         this.postchecks = postchecks != null ? postchecks : MarkdownPostchecks.empty();
         this.type = type != null ? type : RecipeKind.RECIPE;
         this.scope = deriveScope(this.triggers);
-        this.transformAnnotations = transformAnnotations != null ? List.copyOf(transformAnnotations) : List.of();
-        this.transformTypes = transformTypes != null ? List.copyOf(transformTypes) : List.of();
+        this.ownsAnnotations = ownsAnnotations != null ? List.copyOf(ownsAnnotations) : List.of();
+        this.ownsTypes = ownsTypes != null ? List.copyOf(ownsTypes) : List.of();
         this.body = body != null ? body : "";
     }
 
@@ -69,10 +69,10 @@ public class AiMigration implements Migration, AiMigrationMetadata {
     public MigrationScope skillScope() { return scope; }
 
     @Override
-    public List<String> transformAnnotations() { return transformAnnotations; }
+    public List<String> ownsAnnotations() { return ownsAnnotations; }
 
     @Override
-    public List<String> transformTypes() { return transformTypes; }
+    public List<String> ownsTypes() { return ownsTypes; }
 
     @Override
     public String systemPromptSection() { return body; }

@@ -68,7 +68,7 @@ class MarkdownMigrationLoaderTest {
         var content = md("""
                 name: Injection Migration
                 type: feature
-                transforms:
+                owns:
                   annotations:
                     - javax.inject.Inject
                 """, "Feature body.");
@@ -80,7 +80,7 @@ class MarkdownMigrationLoaderTest {
         assertEquals(RecipeKind.FEATURE, migration.skillType());
         // no order specified → default 50
         assertEquals(50, migration.skillOrder());
-        assertTrue(migration.transformAnnotations().contains("javax.inject.Inject"));
+        assertTrue(migration.ownsAnnotations().contains("javax.inject.Inject"));
     }
 
     // ── 3. PROJECT scope derived from files: trigger ──────────────────────────
@@ -199,14 +199,14 @@ class MarkdownMigrationLoaderTest {
         var alpha = loader.parse("features/alpha.feature.md", md("""
                 name: Conflict Alpha
                 type: feature
-                transforms:
+                owns:
                   annotations:
                     - com.example.SharedAnnotation
                 """, "Alpha body."));
         var beta = loader.parse("features/beta.feature.md", md("""
                 name: Conflict Beta
                 type: feature
-                transforms:
+                owns:
                   annotations:
                     - com.example.SharedAnnotation
                 """, "Beta body."));
@@ -252,5 +252,42 @@ class MarkdownMigrationLoaderTest {
         assertEquals(10, migration.skillOrder());
         // files: trigger → FILE scope
         assertEquals(MigrationScope.FILE, migration.skillScope());
+    }
+
+    // ── 13. Trigger annotations auto-inherited into ownsAnnotations ───────────
+
+    @Test
+    void triggerAnnotationsInheritedIntoOwnsAnnotations() {
+        var content = md("""
+                name: Inject Feature
+                type: feature
+                triggers:
+                  - annotations: [javax.inject.Inject]
+                """, "Feature body.");
+
+        var migration = loader.parse("features/inject.feature.md", content);
+
+        assertNotNull(migration);
+        assertEquals(List.of("javax.inject.Inject"), migration.ownsAnnotations());
+    }
+
+    // ── 14. excludeAnnotations removes inherited annotations ──────────────────
+
+    @Test
+    void excludeAnnotationsRemovesInheritedAnnotation() {
+        var content = md("""
+                name: Partial Feature
+                type: feature
+                triggers:
+                  - annotations: [javax.inject.Inject, javax.inject.Named]
+                owns:
+                  excludeAnnotations:
+                    - javax.inject.Named
+                """, "Feature body.");
+
+        var migration = loader.parse("features/partial.feature.md", content);
+
+        assertNotNull(migration);
+        assertEquals(List.of("javax.inject.Inject"), migration.ownsAnnotations());
     }
 }

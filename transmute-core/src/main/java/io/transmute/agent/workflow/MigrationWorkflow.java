@@ -171,7 +171,7 @@ public class MigrationWorkflow {
 
     private void buildPlan() {
         Con.step(5, TOTAL_STEPS, "Building migration plan");
-        plan = new MigrationPlanner().plan(migrations, inventory, List.of());
+        plan = new MigrationPlanner().plan(migrations, inventory);
         var view = buildPlanView();
         printPlanView(view);
         savePlanToFile(view);
@@ -354,7 +354,7 @@ public class MigrationWorkflow {
                 .toList();
         if (!untouched.isEmpty()) {
             System.out.println();
-            Con.sectionHeader("Not targeted", untouched.size() + " files");
+            Con.sectionHeader("Not targeted", untouched.size() + " files  (see migration-untouched.txt)");
             int shown = Math.min(8, untouched.size());
             for (int i = 0; i < shown; i++) {
                 System.out.println("  " + Con.DIM + "·  " + untouched.get(i) + Con.RESET);
@@ -457,6 +457,20 @@ public class MigrationWorkflow {
                 for (var f : untouched) {
                     sb.append("  ").append(f).append("\n");
                 }
+                sb.append("  (see migration-untouched.txt for trigger miss details)\n");
+                sb.append("\n");
+            }
+
+            if (!plan.entries().isEmpty()) {
+                txtSection(sb, "Migration Coverage");
+                int wName = plan.entries().stream()
+                        .mapToInt(e -> e.migration().name().length()).max().orElse(20) + 2;
+                for (var entry : plan.entries()) {
+                    var am = (AiMigration) entry.migration();
+                    var scope = am.skillScope() == io.transmute.migration.MigrationScope.PROJECT
+                            ? "project" : entry.targetFiles().size() + " files";
+                    sb.append(String.format("  %-" + wName + "s  %s%n", entry.migration().name(), scope));
+                }
                 sb.append("\n");
             }
 
@@ -464,8 +478,55 @@ public class MigrationWorkflow {
             Files.writeString(planPath, sb.toString());
             System.out.println();
             Con.info(Con.DIM + "Plan saved → " + Con.RESET + planPath.getFileName());
+            saveUntouchedDiagnostics(untouched);
         } catch (Exception e) {
             Con.warn("Could not save plan file: " + e.getMessage());
+        }
+    }
+
+    private void saveUntouchedDiagnostics(List<String> untouchedFiles) {
+        if (untouchedFiles.isEmpty()) return;
+        try {
+            var diagnostics = new MigrationPlanner().diagnoseUntouched(untouchedFiles, migrations, inventory);
+            var sb = new StringBuilder();
+            sb.append("Files Not Targeted\n");
+            sb.append("──────────────────\n");
+            sb.append("Generated : ").append(java.time.Instant.now()).append("\n\n");
+            sb.append(untouchedFiles.size()).append(" source file(s) not targeted by any migration.\n\n");
+
+            for (var file : untouchedFiles) {
+                sb.append(file).append("\n");
+                var fileInfo = inventory.fileByPath(file);
+                if (fileInfo != null) {
+                    var keyImports = fileInfo.imports().stream()
+                            .filter(i -> !i.startsWith("java.") && !i.startsWith("org.junit")
+                                    && !i.startsWith("org.mockito"))
+                            .limit(5).toList();
+                    if (!keyImports.isEmpty())
+                        sb.append("  imports    : ").append(String.join(", ", keyImports)).append("\n");
+                    if (!fileInfo.annotationTypes().isEmpty())
+                        sb.append("  annotations: ").append(String.join(", ", fileInfo.annotationTypes())).append("\n");
+                    var superTypes = fileInfo.superTypes().stream()
+                            .filter(st -> !st.equals("java.lang.Object")).limit(3).toList();
+                    if (!superTypes.isEmpty())
+                        sb.append("  superTypes : ").append(String.join(", ", superTypes)).append("\n");
+                }
+                var reasons = diagnostics.get(file);
+                if (reasons != null && !reasons.isEmpty()) {
+                    for (var reason : reasons) {
+                        sb.append("  ").append(reason).append("\n");
+                    }
+                } else {
+                    sb.append("  (no migrations with file-level triggers)\n");
+                }
+                sb.append("\n");
+            }
+
+            var path = Path.of(config.outputDir()).resolve("migration-untouched.txt");
+            Files.writeString(path, sb.toString());
+            Con.info(Con.DIM + "Untouched diagnostics → " + Con.RESET + path.getFileName());
+        } catch (Exception e) {
+            Con.warn("Could not write migration-untouched.txt: " + e.getMessage());
         }
     }
 
@@ -508,6 +569,27 @@ public class MigrationWorkflow {
             sb.append(String.format("  test           : %s%n",
                     testSuccess ? "success" : testIterations == 0 ? "skipped" : "failed"));
             sb.append("\n");
+
+            if (!plan.entries().isEmpty()) {
+                txtSection(sb, "Migration Coverage");
+                int wName = plan.entries().stream()
+                        .mapToInt(e -> e.migration().name().length()).max().orElse(20) + 2;
+                for (var entry : plan.entries()) {
+                    var am = (AiMigration) entry.migration();
+                    var scope = am.skillScope() == io.transmute.migration.MigrationScope.PROJECT
+                            ? "project" : entry.targetFiles().size() + " files";
+                    sb.append(String.format("  %-" + wName + "s  %s%n", entry.migration().name(), scope));
+                }
+                sb.append("\n");
+            }
+
+            if (!allPostcheckFailures.isEmpty()) {
+                txtSection(sb, "Postcheck Failures");
+                for (var f : allPostcheckFailures) {
+                    sb.append("  [!] ").append(f).append("\n");
+                }
+                sb.append("\n");
+            }
 
             if (!v.coveredFiles().isEmpty()) {
                 txtSection(sb, "File Results");
@@ -668,8 +750,15 @@ public class MigrationWorkflow {
         // category → list of "  relPath:lineNum  <line>"
         var byCategory = new LinkedHashMap<String, List<String>>();
 
+        var binaryExtensions = Set.of(".class", ".jar", ".war", ".ear",
+                ".png", ".gif", ".jpg", ".jpeg", ".ico",
+                ".pdf", ".zip", ".gz", ".tar", ".bin");
         try (var walk = Files.walk(outputPath)) {
-            walk.filter(p -> p.toString().endsWith(".java"))
+            walk.filter(p -> !Files.isDirectory(p))
+                .filter(p -> {
+                    var name = p.getFileName().toString().toLowerCase();
+                    return binaryExtensions.stream().noneMatch(name::endsWith);
+                })
                 .forEach(javaFile -> {
                     var rel = outputPath.relativize(javaFile).toString().replace('\\', '/');
                     try {
@@ -946,7 +1035,9 @@ public class MigrationWorkflow {
             if (!failures.isEmpty()) {
                 Con.warn("Postcheck failures (" + aiMigration.skillName() + ") for " + relPath + ":");
                 failures.forEach(f -> System.out.println("      " + Con.YELLOW + f + Con.RESET));
-                allPostcheckFailures.addAll(failures);
+                failures.stream()
+                        .map(f -> "[" + aiMigration.skillName() + "] " + f)
+                        .forEach(allPostcheckFailures::add);
             }
         }
         return new ApplyResult(true, change.isChanged());
@@ -995,8 +1086,8 @@ public class MigrationWorkflow {
         for (var migration : aiMigrations) {
             sb.append("\n## ").append(migration.skillName());
             var owned = Stream.concat(
-                    migration.transformAnnotations().stream(),
-                    migration.transformTypes().stream()).toList();
+                    migration.ownsAnnotations().stream(),
+                    migration.ownsTypes().stream()).toList();
             if (!owned.isEmpty()) {
                 sb.append(" (owns: ").append(String.join(", ", owned)).append(")");
             }
@@ -1005,8 +1096,8 @@ public class MigrationWorkflow {
             var doNotTouch = aiMigrations.stream()
                     .filter(other -> other != migration)
                     .flatMap(other -> Stream.concat(
-                            other.transformAnnotations().stream(),
-                            other.transformTypes().stream()))
+                            other.ownsAnnotations().stream(),
+                            other.ownsTypes().stream()))
                     .distinct().toList();
             if (!doNotTouch.isEmpty()) {
                 sb.append("DO NOT touch: ").append(String.join(", ", doNotTouch))

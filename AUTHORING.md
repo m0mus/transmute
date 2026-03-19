@@ -1,3 +1,4 @@
+
 # Converter Authoring Guide
 
 This guide covers everything needed to build a Transmute migration module —
@@ -123,9 +124,11 @@ order: 5                    # Integer, default 50. Lower = runs first.
 triggers:                   # When to fire this migration (see section 6)
   - ...
 
-transforms:                 # FQN ownership — required for features (see section 7)
-  annotations: [...]
-  types: [...]
+owns:                       # FQN ownership — optional; auto-inherited from trigger.annotations (see section 7)
+  annotations: [...]        # additional FQNs beyond trigger-inherited
+  types: [...]              # type FQNs to claim (never auto-inherited)
+  excludeAnnotations: [...] # remove specific FQNs from the inherited set
+  excludeTypes: [...]       # remove specific type FQNs
 
 postchecks:                 # Post-execution quality checks (see section 8)
   forbidImports: [...]
@@ -156,8 +159,6 @@ triggers:
   - imports: [javax.ws.rs.]                  # file imports any of these prefixes (prefix match)
   - superTypes: [io.dropwizard.Application]  # file extends/implements any of these FQNs
   - files: [pom.xml, build.gradle]           # any of these files exist in the project root
-  - signals: [has_jpa_entities]              # all signals present in the project inventory
-  - compileErrors: ["cannot find symbol.*MyOldClass"]  # regex matches a compile error
 ```
 
 ### Trigger semantics
@@ -168,8 +169,6 @@ triggers:
 | `annotations` | FILE-scoped | Exact FQN match on used annotations |
 | `superTypes` | FILE-scoped | Exact FQN match on `extends` / `implements` types (full supertype chain) |
 | `files` | FILE-scoped | File name exists at project root |
-| `signals` | PROJECT-scoped | Named signal present in inventory |
-| `compileErrors` | PROJECT-scoped | Regex matches any compile error string |
 
 ### Scope derivation
 
@@ -178,7 +177,7 @@ Scope is inferred automatically from trigger types — you never declare it expl
 | Trigger types present | Derived scope |
 |-----------------------|---------------|
 | Any `imports`, `annotations`, `superTypes`, or `files` | **FILE** — one AI call per matching file |
-| Only `signals` or `compileErrors`, or no triggers | **PROJECT** — one AI call for the whole output directory |
+| No triggers | **PROJECT** — one AI call for the whole output directory |
 
 FILE-scoped migrations are far more precise — prefer them. Only use PROJECT scope
 for whole-project structural changes (e.g. adding a config file that doesn't exist yet).
@@ -197,29 +196,52 @@ triggers:
 
 ---
 
-## 7. Transforms (Feature Conflict Detection)
+## 7. Owns (Feature Conflict Detection)
 
-`transforms` declares FQN ownership. It is used in two ways:
+`owns` declares FQN ownership. It is used in two ways:
 
 1. **Conflict detection** — at load time, the framework checks that no two features
    claim the same FQN. If they do, startup fails with a clear error.
 
 2. **Combined prompt coordination** — when a recipe and one or more features are
-   merged into a single AI call for the same file, each migration's `transforms`
+   merged into a single AI call for the same file, each migration's `owns`
    drives the `owns:` / `DO NOT touch:` directives in the combined prompt, preventing
    migrations from overwriting each other's work.
 
+**Auto-inheritance:** annotation FQNs declared in `trigger.annotations` are automatically
+included in ownership — you do not need to repeat them under `owns:`. Only use `owns:`
+when you need to claim additional FQNs beyond the trigger set, exclude specific inherited
+annotations, or claim type ownership (never auto-inherited).
+
 ```yaml
-transforms:
+# Minimal — ownership auto-inherited from trigger.annotations:
+triggers:
+  - annotations:
+      - io.dropwizard.auth.Auth
+      - io.dropwizard.auth.Authenticated
+
+# Extended — claim extra FQNs and exclude one inherited annotation:
+owns:
   annotations:
-    - io.dropwizard.auth.Auth          # this feature owns @Auth migration
-    - io.dropwizard.auth.Authenticated
+    - io.dropwizard.auth.AuthFilter   # additional FQN beyond trigger-inherited
   types:
-    - io.dropwizard.auth.Authenticator # this feature owns Authenticator subtype migration
+    - io.dropwizard.auth.Authenticator  # type FQNs (never auto-inherited)
+  excludeAnnotations:
+    - io.dropwizard.auth.Authenticated  # remove from inherited set
+```
+
+**Resolved ownership formula:**
+```
+ownsAnnotations = trigger.annotations (all groups, unioned)
+                ∪ owns.annotations
+                − owns.excludeAnnotations
+
+ownsTypes       = owns.types
+                − owns.excludeTypes
 ```
 
 **Recipes** are implicitly exclusive (a file matches at most one), so conflicts
-cannot arise. However, declaring `transforms` in a recipe still produces cleaner
+cannot arise. However, declaring `owns` in a recipe still produces cleaner
 `DO NOT touch:` coordination when features co-execute with it — recommended for
 recipes that touch annotations or supertypes also handled by features.
 
@@ -521,7 +543,7 @@ Before committing a recipe or feature:
 - [ ] `name:` is unique across all recipes and features
 - [ ] `type:` is `recipe` or `feature`
 - [ ] At least one trigger defined (or explicitly intending PROJECT scope)
-- [ ] `transforms:` declared if this is a feature (required for conflict detection)
+- [ ] `owns:` — auto-populated from `trigger.annotations`; add explicit entries only for additional FQNs, type ownership, or exclusions
 - [ ] `postchecks.forbidImports` lists the source-framework import prefixes this migration removes
 - [ ] Body includes explicit import lists (what to remove, what to add)
 - [ ] Body includes `TRANSMUTE[<category>]` instructions for anything that cannot be automated

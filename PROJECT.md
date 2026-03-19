@@ -90,7 +90,7 @@ one recipe. Scope is derived from triggers: FILE if any trigger uses `imports`,
 **Feature** (`type: feature`) — A cross-cutting fragment. A feature is merged into
 whichever recipe(s) share the same target file, so multiple features can compose with
 one recipe in a single AI call. Scope is derived from triggers by the same rules as
-recipes. Features typically target file-level signals and therefore run at FILE scope.
+recipes. Features typically use import or annotation triggers and therefore run at FILE scope.
 
 ### Front-matter reference
 
@@ -104,9 +104,9 @@ triggers:
     annotations: [com.example.OldAnnot]    # file uses any of these annotations
     superTypes: [com.example.OldBase]      # file extends/implements any of these
   - files: [pom.xml, build.gradle]         # project root contains any of these files
-transforms:
-  annotations: [com.example.OldAnnot]     # FQN ownership — used by features for conflict detection
-  types: [com.example.OldBase]
+owns:                                        # auto-inherited from trigger.annotations; use for additions/exclusions
+  annotations: [com.example.OldAnnot]     # additional FQN ownership beyond trigger-inherited
+  types: [com.example.OldBase]            # type FQNs to claim (never auto-inherited)
 postchecks:
   forbidImports: [com.example.OldClass]    # warn if target file still imports these
   requireImports: [com.example.NewClass]   # warn if target file does not import these
@@ -160,9 +160,6 @@ The `owns:` and `DO NOT touch:` lines are derived from the recipe's `annotations
 - **`annotations`**: at least one Java file uses a matching annotation FQN.
 - **`superTypes`**: at least one Java file extends/implements a matching type FQN.
 - **`files`**: the named file exists in `inventory.getRootDir()`.
-- **`signals`**: all listed signals are present in `inventory.getSignals()`.
-- **`compileErrors`**: all listed regex patterns match at least one compile error string
-  (used for error-triggered migrations).
 
 For FILE-scoped triggers, the planner also builds the list of matching target files,
 which drives the per-file agent loop in `MigrationWorkflow`.
@@ -193,7 +190,7 @@ io.transmute.migration/
   FileChange.java             Before/after content of one file
   Workspace.java              Path helpers: sourceDir, outputDir, dryRun flag
   MigrationScope.java         Enum: FILE | PROJECT
-  MarkdownTrigger.java        Record: imports, annotations, superTypes, signals, compileErrors, files
+  MarkdownTrigger.java        Record: imports, annotations, superTypes, files
   MarkdownPostchecks.java     Record: forbidImports, requireImports, forbidPatterns
   postcheck/
     PostcheckRunner.java      Evaluates postchecks after FILE-scoped migrations

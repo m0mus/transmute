@@ -37,14 +37,15 @@ public interface AiMigrationMetadata {
     /**
      * FQN annotation types this feature owns — used for conflict detection.
      * Empty for recipes (which are exclusive by class-type matching and need no conflict check).
+     * Auto-inherited from {@code trigger.annotations} plus any explicit {@code owns.annotations}.
      */
-    List<String> transformAnnotations();
+    List<String> ownsAnnotations();
 
     /**
      * FQN types this feature owns — used for conflict detection.
      * Empty for recipes.
      */
-    List<String> transformTypes();
+    List<String> ownsTypes();
 
     /**
      * The markdown body of this recipe or feature's instruction section.

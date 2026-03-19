@@ -4,9 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * The full structural inventory of a scanned project.
@@ -24,17 +22,12 @@ public class ProjectInventory {
     private List<DependencyInfo> dependencies = new ArrayList<>();
     private List<DependencyInfo> transitiveDependencies = new ArrayList<>();
     private List<ModuleInfo> modules = new ArrayList<>();
-    private Set<String> signals = new HashSet<>();
     private List<String> warnings = new ArrayList<>();
     private List<String> errors = new ArrayList<>();
 
     public ProjectInventory() {}
 
     // ── Mutators ──────────────────────────────────────────────────────────────
-
-    public void addSignal(String signal) {
-        signals.add(signal);
-    }
 
     public void addWarning(String warning) {
         warnings.add(warning);
@@ -96,9 +89,6 @@ public class ProjectInventory {
 
     public List<ModuleInfo> getModules() { return modules; }
     public void setModules(List<ModuleInfo> modules) { this.modules = modules; }
-
-    public Set<String> getSignals() { return signals; }
-    public void setSignals(Set<String> signals) { this.signals = signals; }
 
     public List<String> getWarnings() { return warnings; }
     public void setWarnings(List<String> warnings) { this.warnings = warnings; }

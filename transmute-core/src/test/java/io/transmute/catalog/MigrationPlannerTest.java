@@ -33,29 +33,19 @@ class MigrationPlannerTest {
                 1,
                 List.of(triggerFiles("pom.xml")));
 
-        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of());
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory);
         assertEquals(1, plan.entries().size());
         assertEquals(1, plan.entries().getFirst().targetFiles().size());
         assertEquals("pom.xml", normalize(plan.entries().getFirst().targetFiles().getFirst()));
     }
 
     @Test
-    void keepsProjectScopedMigrationWithoutTargetFiles() {
+    void projectScopedMigrationWithNoTriggersIsAlwaysIncluded() {
         var inventory = emptyInventory(tempDir);
-        inventory.addSignal("global.signal");
 
-        var migration = migration(
-                "Global Migration",
-                10,
-                List.of(new MarkdownTrigger(
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        List.of("global.signal"),
-                        List.of(),
-                        List.of())));
+        var migration = migration("Global Migration", 10, List.of());
 
-        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of());
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory);
         assertEquals(1, plan.entries().size());
         assertTrue(plan.entries().getFirst().targetFiles().isEmpty());
     }
@@ -68,7 +58,7 @@ class MigrationPlannerTest {
         var m2 = migration("Alpha", 10, List.of());
         var m3 = migration("Beta", 10, List.of());
 
-        var plan = new MigrationPlanner().plan(List.of(m1, m2, m3), inventory, List.of());
+        var plan = new MigrationPlanner().plan(List.of(m1, m2, m3), inventory);
         var names = plan.entries().stream().map(e -> e.migration().name()).toList();
         assertEquals(List.of("Alpha", "Beta", "Zeta"), names);
     }
@@ -83,11 +73,9 @@ class MigrationPlannerTest {
                         List.of("javax.ws.rs."),
                         List.of(),
                         List.of(),
-                        List.of(),
-                        List.of(),
                         List.of())));
 
-        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of());
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory);
         assertTrue(plan.entries().isEmpty());
     }
 
@@ -111,11 +99,9 @@ class MigrationPlannerTest {
                         List.of("javax.ws.rs."),
                         List.of(),
                         List.of(),
-                        List.of(),
-                        List.of(),
                         List.of("pom.xml"))));
 
-        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of());
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory);
         var targets = plan.entries().getFirst().targetFiles().stream().map(this::normalize).toList();
         assertEquals(2, targets.size());
         assertTrue(targets.contains("pom.xml"));
@@ -133,13 +119,13 @@ class MigrationPlannerTest {
                 Set.of(),
                 Map.of())));
 
-        var triggerA = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of(), List.of(), List.of());
-        var triggerB = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of(), List.of(), List.of());
+        var triggerA = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of());
+        var triggerB = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of());
 
         var recipeA = new AiMigration("Recipe A", 1, List.of(triggerA), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
         var recipeB = new AiMigration("Recipe B", 5, List.of(triggerB), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
 
-        var plan = new MigrationPlanner().plan(List.of(recipeB, recipeA), inventory, List.of());
+        var plan = new MigrationPlanner().plan(List.of(recipeB, recipeA), inventory);
         assertEquals(2, plan.entries().size());
         assertEquals("Recipe A", plan.entries().get(0).migration().name());
         assertEquals("Recipe B", plan.entries().get(1).migration().name());
@@ -160,12 +146,12 @@ class MigrationPlannerTest {
                 Set.of(),
                 Map.of())));
 
-        var trigger = new MarkdownTrigger(List.of("org.shared."), List.of(), List.of(), List.of(), List.of(), List.of());
+        var trigger = new MarkdownTrigger(List.of("org.shared."), List.of(), List.of(), List.of());
 
         var recipe = new AiMigration("My Recipe", 1, List.of(trigger), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
         var feature = new AiMigration("My Feature", 2, List.of(trigger), MarkdownPostchecks.empty(), RecipeKind.FEATURE, List.of(), List.of(), "prompt");
 
-        var plan = new MigrationPlanner().plan(List.of(feature, recipe), inventory, List.of());
+        var plan = new MigrationPlanner().plan(List.of(feature, recipe), inventory);
         assertEquals(2, plan.entries().size());
         var names = plan.entries().stream().map(e -> e.migration().name()).toList();
         assertTrue(names.contains("My Recipe"));
@@ -193,49 +179,9 @@ class MigrationPlannerTest {
                         List.of(),
                         List.of(),
                         List.of("com.example.Foo"),
-                        List.of(),
-                        List.of(),
                         List.of())));
 
-        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of());
-        assertTrue(plan.entries().isEmpty());
-    }
-
-    @Test
-    void compileErrorTriggerFiresWhenErrorMatches() {
-        var inventory = emptyInventory(tempDir);
-
-        var migration = migration(
-                "Compile Error Migration",
-                1,
-                List.of(new MarkdownTrigger(
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        List.of("cannot find symbol"),
-                        List.of())));
-
-        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of("error: cannot find symbol"));
-        assertEquals(1, plan.entries().size());
-    }
-
-    @Test
-    void compileErrorTriggerDoesNotFireWhenErrorAbsent() {
-        var inventory = emptyInventory(tempDir);
-
-        var migration = migration(
-                "Compile Error Migration Absent",
-                1,
-                List.of(new MarkdownTrigger(
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        List.of("cannot find symbol"),
-                        List.of())));
-
-        var plan = new MigrationPlanner().plan(List.of(migration), inventory, List.of());
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory);
         assertTrue(plan.entries().isEmpty());
     }
 
@@ -260,8 +206,6 @@ class MigrationPlannerTest {
 
     private MarkdownTrigger triggerFiles(String... paths) {
         return new MarkdownTrigger(
-                List.of(),
-                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),

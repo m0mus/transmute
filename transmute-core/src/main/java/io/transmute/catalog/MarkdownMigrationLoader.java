@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * Scans the classpath for recipes ({@code recipes/*.recipe.md}) and features
@@ -120,8 +121,6 @@ public class MarkdownMigrationLoader {
                         t.imports(),
                         t.annotations(),
                         t.superTypes(),
-                        t.signals(),
-                        t.compileErrors(),
                         t.files()));
             }
         }
@@ -138,13 +137,25 @@ public class MarkdownMigrationLoader {
             postchecks = MarkdownPostchecks.empty();
         }
 
-        // Transforms — declares FQN ownership for features
-        List<String> transformAnnotations = List.of();
-        List<String> transformTypes = List.of();
-        if (fm.transforms() != null) {
-            transformAnnotations = fm.transforms().annotations();
-            transformTypes = fm.transforms().types();
-        }
+        // Owns — auto-inherit annotations from all trigger groups, then apply explicit owns block
+        var inheritedAnnotations = triggers.stream()
+                .flatMap(t -> t.annotations().stream())
+                .distinct()
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+
+        var owns = fm.owns();
+        List<String> explicitAnnotations = owns != null ? owns.annotations()        : List.of();
+        List<String> explicitTypes       = owns != null ? owns.types()              : List.of();
+        List<String> excludeAnnotations  = owns != null ? owns.excludeAnnotations() : List.of();
+        List<String> excludeTypes        = owns != null ? owns.excludeTypes()       : List.of();
+
+        var ownsAnnotations = Stream.concat(inheritedAnnotations.stream(), explicitAnnotations.stream())
+                .distinct()
+                .filter(a -> !excludeAnnotations.contains(a))
+                .toList();
+        var ownsTypes = explicitTypes.stream()
+                .filter(t -> !excludeTypes.contains(t))
+                .toList();
 
         return new AiMigration(
                 fm.name(),
@@ -152,8 +163,8 @@ public class MarkdownMigrationLoader {
                 triggers,
                 postchecks,
                 recipeKind,
-                transformAnnotations,
-                transformTypes,
+                ownsAnnotations,
+                ownsTypes,
                 body);
     }
 
@@ -220,10 +231,10 @@ public class MarkdownMigrationLoader {
             if (aiMigration.skillType() != RecipeKind.FEATURE) {
                 continue;
             }
-            for (var ann : aiMigration.transformAnnotations()) {
+            for (var ann : aiMigration.ownsAnnotations()) {
                 annotationOwners.computeIfAbsent(ann, k -> new ArrayList<>()).add(aiMigration.skillName());
             }
-            for (var type : aiMigration.transformTypes()) {
+            for (var type : aiMigration.ownsTypes()) {
                 typeOwners.computeIfAbsent(type, k -> new ArrayList<>()).add(aiMigration.skillName());
             }
         }
