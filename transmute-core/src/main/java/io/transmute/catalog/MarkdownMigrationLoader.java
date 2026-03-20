@@ -121,7 +121,8 @@ public class MarkdownMigrationLoader {
                         t.imports(),
                         t.annotations(),
                         t.superTypes(),
-                        t.files()));
+                        t.files(),
+                        t.excludeImports()));
             }
         }
 

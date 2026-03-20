@@ -17,7 +17,8 @@ class AiMigrationScopeTest {
                         List.of(),
                         List.of(),
                         List.of(),
-                        List.of("pom.xml"))),
+                        List.of("pom.xml"),
+                        List.of())),
                 MarkdownPostchecks.empty(),
                 RecipeKind.FEATURE,
                 List.of(),
@@ -33,6 +34,7 @@ class AiMigrationScopeTest {
                 "Global migration",
                 1,
                 List.of(new MarkdownTrigger(
+                        List.of(),
                         List.of(),
                         List.of(),
                         List.of(),

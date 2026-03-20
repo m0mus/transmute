@@ -16,3 +16,8 @@
       <artifactId>helidon-validation</artifactId>
   </dependency>
   ```
+- **`*__Validated.java: unreachable statement`** — A validation annotation is on a private
+  field or a void setter. Helidon's `ValidatedTypeGenerator` only reads annotations from
+  **public, no-argument, non-void methods** (getters) and non-private fields. Move the
+  annotation from the private field or setter to the corresponding **public getter** in the
+  source file. Do NOT remove `@Validation.Validated` or the constraint annotation.

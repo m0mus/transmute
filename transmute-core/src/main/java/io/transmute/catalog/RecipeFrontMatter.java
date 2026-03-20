@@ -28,13 +28,15 @@ public record RecipeFrontMatter(
             List<String> imports,
             List<String> annotations,
             List<String> superTypes,
-            List<String> files) {
+            List<String> files,
+            List<String> excludeImports) {
 
         public TriggerFrontMatter {
             imports = imports != null ? imports : List.of();
             annotations = annotations != null ? annotations : List.of();
             superTypes = superTypes != null ? superTypes : List.of();
             files = files != null ? files : List.of();
+            excludeImports = excludeImports != null ? excludeImports : List.of();
         }
     }
 

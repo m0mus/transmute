@@ -79,6 +79,11 @@ public class MigrationPlanner {
     }
 
     private boolean fileMatchesTrigger(JavaFileInfo file, MarkdownTrigger trigger) {
+        if (!trigger.excludeImports().isEmpty()) {
+            boolean excluded = trigger.excludeImports().stream()
+                    .anyMatch(exc -> file.imports().stream().anyMatch(i -> i.startsWith(exc)));
+            if (excluded) return false;
+        }
         if (!trigger.imports().isEmpty()) {
             boolean anyMatch = trigger.imports().stream()
                     .anyMatch(imp -> file.imports().stream().anyMatch(i -> i.startsWith(imp)));

@@ -12,12 +12,14 @@ public record MarkdownTrigger(
         List<String> imports,
         List<String> annotations,
         List<String> superTypes,
-        List<String> files) {
+        List<String> files,
+        List<String> excludeImports) {
 
     public MarkdownTrigger {
         imports = imports != null ? List.copyOf(imports) : List.of();
         annotations = annotations != null ? List.copyOf(annotations) : List.of();
         superTypes = superTypes != null ? List.copyOf(superTypes) : List.of();
         files = files != null ? List.copyOf(files) : List.of();
+        excludeImports = excludeImports != null ? List.copyOf(excludeImports) : List.of();
     }
 }

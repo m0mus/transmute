@@ -73,6 +73,7 @@ class MigrationPlannerTest {
                         List.of("javax.ws.rs."),
                         List.of(),
                         List.of(),
+                        List.of(),
                         List.of())));
 
         var plan = new MigrationPlanner().plan(List.of(migration), inventory);
@@ -99,7 +100,8 @@ class MigrationPlannerTest {
                         List.of("javax.ws.rs."),
                         List.of(),
                         List.of(),
-                        List.of("pom.xml"))));
+                        List.of("pom.xml"),
+                        List.of())));
 
         var plan = new MigrationPlanner().plan(List.of(migration), inventory);
         var targets = plan.entries().getFirst().targetFiles().stream().map(this::normalize).toList();
@@ -119,8 +121,8 @@ class MigrationPlannerTest {
                 Set.of(),
                 Map.of())));
 
-        var triggerA = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of());
-        var triggerB = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of());
+        var triggerA = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of(), List.of());
+        var triggerB = new MarkdownTrigger(List.of("com.example."), List.of(), List.of(), List.of(), List.of());
 
         var recipeA = new AiMigration("Recipe A", 1, List.of(triggerA), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
         var recipeB = new AiMigration("Recipe B", 5, List.of(triggerB), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
@@ -146,7 +148,7 @@ class MigrationPlannerTest {
                 Set.of(),
                 Map.of())));
 
-        var trigger = new MarkdownTrigger(List.of("org.shared."), List.of(), List.of(), List.of());
+        var trigger = new MarkdownTrigger(List.of("org.shared."), List.of(), List.of(), List.of(), List.of());
 
         var recipe = new AiMigration("My Recipe", 1, List.of(trigger), MarkdownPostchecks.empty(), RecipeKind.RECIPE, List.of(), List.of(), "prompt");
         var feature = new AiMigration("My Feature", 2, List.of(trigger), MarkdownPostchecks.empty(), RecipeKind.FEATURE, List.of(), List.of(), "prompt");
@@ -159,6 +161,59 @@ class MigrationPlannerTest {
         plan.entries().forEach(e ->
                 assertTrue(e.targetFiles().stream().map(this::normalize).toList()
                         .contains("src/main/java/acme/Baz.java")));
+    }
+
+    @Test
+    void excludeImportsPreventsTriggerMatchForMatchingFile() {
+        var inventory = emptyInventory(tempDir);
+        inventory.setJavaFiles(List.of(new JavaFileInfo(
+                "src/test/java/acme/FooTest.java",
+                "acme.FooTest",
+                Set.of(),
+                Set.of("javax.ws.rs.core.Response", "io.dropwizard.testing.junit5.ResourceExtension"),
+                Set.of(),
+                Map.of())));
+
+        // trigger matches javax.ws.rs. but excludes io.dropwizard.testing — file should not match
+        var migration = migration(
+                "REST Resource",
+                5,
+                List.of(new MarkdownTrigger(
+                        List.of("javax.ws.rs."),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of("io.dropwizard.testing"))));
+
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory);
+        assertTrue(plan.entries().isEmpty());
+    }
+
+    @Test
+    void excludeImportsDoesNotAffectNonExcludedFile() {
+        var inventory = emptyInventory(tempDir);
+        inventory.setJavaFiles(List.of(new JavaFileInfo(
+                "src/main/java/acme/FooResource.java",
+                "acme.FooResource",
+                Set.of(),
+                Set.of("javax.ws.rs.Path", "javax.ws.rs.GET"),
+                Set.of(),
+                Map.of())));
+
+        var migration = migration(
+                "REST Resource",
+                5,
+                List.of(new MarkdownTrigger(
+                        List.of("javax.ws.rs."),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of("io.dropwizard.testing"))));
+
+        var plan = new MigrationPlanner().plan(List.of(migration), inventory);
+        assertEquals(1, plan.entries().size());
+        assertTrue(plan.entries().getFirst().targetFiles().stream().map(this::normalize).toList()
+                .contains("src/main/java/acme/FooResource.java"));
     }
 
     @Test
@@ -179,6 +234,7 @@ class MigrationPlannerTest {
                         List.of(),
                         List.of(),
                         List.of("com.example.Foo"),
+                        List.of(),
                         List.of())));
 
         var plan = new MigrationPlanner().plan(List.of(migration), inventory);
@@ -209,7 +265,8 @@ class MigrationPlannerTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(paths));
+                List.of(paths),
+                List.of());
     }
 
     private String normalize(String path) {

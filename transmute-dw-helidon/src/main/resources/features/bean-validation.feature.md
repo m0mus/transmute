@@ -47,67 +47,62 @@ owns:
 ---
 
 This file uses Bean Validation annotations (`javax.validation` or `jakarta.validation`).
-Helidon 4 SE has its own declarative validation API in `io.helidon.validation.Validation`
-with a different annotation structure. Migrate all validation annotations to the Helidon
-equivalents.
+Helidon 4 SE declarative validation uses `io.helidon.validation.Validation`.
 
-## Step 1 — Add @Validation.Validated to the class
+## Step 1 — Add @Validation.Validated
 
-Add `@Validation.Validated` to every class that has validation annotations on its methods
-or parameters. This triggers Helidon's annotation-processor-generated interception.
+Add `@Validation.Validated` to **every** class that has validation annotations anywhere
+(fields, methods, or parameters). This triggers Helidon's annotation-processor-generated
+interception.
 
 ```java
-// Before
-public class PersonResource {
-
-// After
 @Validation.Validated
 public class PersonResource {
 ```
 
-## Step 2 — Move annotations from private fields to public setters
+## Step 2 — Move annotations to public getters
 
-**Critical:** Helidon's `@Validation.Validated` annotation processor only processes
-annotations on **public methods**, not on private fields. Annotations on private fields
-cause uncompilable generated code.
+Helidon's `ValidatedTypeGenerator` only processes annotations on **public, no-argument,
+non-void methods** (getters) and **non-private fields**. Annotations on private fields or
+void setter methods are silently ignored and cause the generated `*__Validated.java` to
+have an empty property switch, making the trailing `;` an unreachable statement. This
+applies to ALL classes, including JPA `@Entity` classes.
 
-If the original code has annotations on private fields, move each annotation to the
-corresponding public setter method:
-
-```java
-// Before
-@NotNull
-private String name;
-
-public void setName(String name) { this.name = name; }
-
-// After
-private String name;
-
-@Validation.NotNull
-public void setName(String name) { this.name = name; }
-```
-
-If no public setter exists for an annotated private field, add one:
+Move every validation annotation from a private field to the corresponding public getter.
+If no getter exists, add one.
 
 ```java
 // Before
-@NotNull
-private String name;
+@Min(value = 0)
+@Max(value = 9999)
+private int yearBorn;
 
-// After
-private String name;
+public int getYearBorn() { return yearBorn; }
+public void setYearBorn(int yearBorn) { this.yearBorn = yearBorn; }
 
-@Validation.NotNull
-public void setName(String name) { this.name = name; }
+// After — annotation moved to the public getter
+private int yearBorn;
+
+@Validation.Integer.Min(0)
+@Validation.Integer.Max(9999)
+public int getYearBorn() { return yearBorn; }
+public void setYearBorn(int yearBorn) { this.yearBorn = yearBorn; }
 ```
 
-Annotations on public method parameters and return types stay in place — only move
-annotations that are currently on private fields.
+### Record DTOs
+
+For Java records, keep converted validation annotations on the record components.
+
+```java
+@Validation.Validated
+public record MyDto(@Validation.String.NotBlank String name,
+                    @Validation.Integer.Min(0) int age) {
+}
+```
 
 ## Step 3 — Replace constraint annotations
 
-Replace every Bean Validation annotation with the Helidon equivalent:
+Replace Bean Validation annotations with the Helidon equivalents:
 
 | Remove | Add |
 |--------|-----|
@@ -140,40 +135,56 @@ Replace every Bean Validation annotation with the Helidon equivalent:
 | `@PastOrPresent` on Calendar | `@Validation.Calendar.PastOrPresent` |
 
 For any annotation not listed above, remove it and add:
+
 ```java
 // TRANSMUTE[manual]: was @XYZ — find Helidon Validation equivalent or write custom constraint
 ```
 
-## Step 4 — Dropwizard-specific validators
+## Step 4 — Validated body parameters
+
+If the source had a validated REST body parameter such as:
+
+```java
+public Person create(@Valid Person person)
+```
+
+convert it to:
+
+```java
+public Person create(@Validation.Valid @Http.Entity Person person)
+```
+
+## Step 5 — Dropwizard-specific validators
 
 | Remove | Add |
 |--------|-----|
 | `@io.dropwizard.validation.PortRange` | `@Validation.Integer.Min(1)` + `@Validation.Integer.Max(65535)` |
 | `@io.dropwizard.validation.Validated` | `@Validation.Valid` |
-| All other `io.dropwizard.validation.*` | Remove + `// TRANSMUTE[manual]: was DW validator — find Helidon Validation equivalent` |
+| other `io.dropwizard.validation.*` | remove + `TRANSMUTE[manual]` comment |
 
-## Step 5 — Update imports
+## Step 6 — Imports
 
-Remove all of:
+Remove:
 - `javax.validation.*`
 - `jakarta.validation.*`
 - `org.hibernate.validator.constraints.*`
 - `io.dropwizard.validation.*`
 
-Add a single import:
+Add:
+
 ```java
 import io.helidon.validation.Validation;
 ```
 
-## Step 6 — Note on pom.xml
+## Step 7 — Build note
 
-The `helidon-validation` module must be on the classpath. The Build File Migration recipe
-adds it as part of the Helidon BOM. If it is missing, add:
+The build must include:
+
 ```xml
 <dependency>
     <groupId>io.helidon.validation</groupId>
     <artifactId>helidon-validation</artifactId>
 </dependency>
 ```
-Do NOT modify `pom.xml` in this step — that is handled by the Build File Migration recipe.
 
+The Build File Migration recipe handles this; do not modify `pom.xml` here.
