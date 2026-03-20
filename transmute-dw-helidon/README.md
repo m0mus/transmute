@@ -26,15 +26,16 @@ front-matter; scope is derived automatically by the planner.
 | 12 | `recipes/http-client.recipe.md` | recipe | FILE | `JerseyClientBuilder` → WebClient TODOs |
 | 20 | `recipes/health-check.recipe.md` | recipe | FILE | DW `HealthCheck` → Helidon `HealthCheck` |
 | **25** | **`recipes/unsupported-jaxrs.recipe.md`** | recipe | FILE | **Filters, views, tasks, commands → stubbed with TODOs** |
-| 50 | `features/bean-validation.feature.md` | feature | FILE | `javax.validation.*` → `@Validation.*` |
+| **7** | **`features/security-auth.feature.md`** | feature | FILE | `@Auth`/`Authenticator`/`Authorizer` → Helidon Security |
+| **15** | **`features/metrics-migration.feature.md`** | feature | FILE | **Codahale metrics → Helidon Metrics** |
+| **16** | **`features/bean-validation.feature.md`** | feature | FILE | `javax.validation.*` → `@Validation.*` on public getters |
 | 50 | `features/injection-migration.feature.md` | feature | FILE | Guice/HK2/`javax.inject` → Service Registry |
-| **50** | **`features/metrics-migration.feature.md`** | feature | FILE | **Codahale metrics → Micrometer** |
 | 50 | `features/unit-of-work.feature.md` | feature | FILE | `@UnitOfWork`/`AbstractDAO` → DbClient TODOs |
-| 50 | `features/security-auth.feature.md` | feature | FILE | `@Auth`/`Authenticator`/`Authorizer` → Security TODOs |
 
-Features have no explicit `order:` set and therefore use the default of 50. They run
-after all recipes with lower order values. Multiple features can compose with one recipe
-in a single AI call when they target the same file.
+`security-auth` (7), `metrics-migration` (15), and `bean-validation` (16) have explicit
+`order:` values so they run before data and injection migrations. `injection-migration`
+and `unit-of-work` use the default order of 50. Multiple features can compose with one
+recipe in a single AI call when they target the same file.
 
 ---
 
@@ -286,7 +287,7 @@ Any other `Result.` usage is annotated with `DW_MIGRATION_TODO[manual]`.
 
 ---
 
-## Bean Validation Migration — feature, FILE scope (default order 50)
+## Bean Validation Migration — feature, FILE scope (order 16)
 
 `features/bean-validation.feature.md`
 
@@ -296,13 +297,16 @@ or `io.dropwizard.validation`. Postchecks: forbids `javax.validation` and
 
 ### What it does
 
-Helidon 4 SE uses Jakarta EE 10, which moved the `javax.*` namespace to `jakarta.*`.
-Annotation names are unchanged — only import packages change.
-
 Helidon 4 SE has its own declarative validation API — not `jakarta.validation`. All
 Bean Validation annotations are replaced with `@Validation.*` nested annotations from
 `io.helidon.validation.Validation`. The class is annotated with `@Validation.Validated`
-to trigger Helidon's build-time code generation.
+to trigger Helidon's build-time code generation (`*__Validated.java`).
+
+**Annotation placement:** Helidon's `ValidatedTypeGenerator` only processes annotations
+on **public, no-argument, non-void methods** (getters) and non-private fields. Annotations
+on private fields or void setter methods are ignored and cause a compile error
+(`unreachable statement`) in the generated file. Annotations are therefore moved from
+private fields to their corresponding public getters.
 
 | Before | After |
 |--------|-------|
@@ -367,7 +371,7 @@ and `SessionFactory` usages with `DW_MIGRATION_TODO` comments pointing to the He
 
 ---
 
-## Security / Auth Migration — feature, FILE scope (default order 50)
+## Security / Auth Migration — feature, FILE scope (order 7)
 
 `features/security-auth.feature.md`
 
@@ -382,7 +386,7 @@ Helidon Security imports automatically.
 
 ---
 
-## Metrics Migration — feature, FILE scope (default order 50)
+## Metrics Migration — feature, FILE scope (order 15)
 
 `features/metrics-migration.feature.md`
 
