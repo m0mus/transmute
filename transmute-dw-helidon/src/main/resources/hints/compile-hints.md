@@ -8,3 +8,11 @@
 - **`io.dropwizard.views.common.*`** — remove the import and stub the class body.
 - **NEVER add `io.dropwizard.*` imports.** If a symbol is missing from a Dropwizard package,
   stub or remove it. Do NOT restore Dropwizard dependencies.
+- **`io.helidon.validation.Validation` unresolved** — do NOT revert to `javax.validation` or
+  `jakarta.validation`. Add `helidon-validation` to `pom.xml` dependencies instead:
+  ```xml
+  <dependency>
+      <groupId>io.helidon.validation</groupId>
+      <artifactId>helidon-validation</artifactId>
+  </dependency>
+  ```

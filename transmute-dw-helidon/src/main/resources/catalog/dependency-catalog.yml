@@ -68,6 +68,21 @@
   status: replaced
   notes: Managed start/stop -> PostConstruct/PreDestroy
 
+- groupId: javax.validation
+  artifactId: validation-api
+  status: replaced
+  notes: Replaced by io.helidon.validation:helidon-validation; use @Validation.* annotations
+
+- groupId: jakarta.validation
+  artifactId: jakarta.validation-api
+  status: replaced
+  notes: Replaced by io.helidon.validation:helidon-validation; use @Validation.* annotations
+
+- groupId: org.hibernate.validator
+  artifactId: hibernate-validator
+  status: replaced
+  notes: Replaced by io.helidon.validation:helidon-validation; use @Validation.* annotations
+
 - groupId: com.codahale.metrics
   artifactId: metrics-core
   status: replaced

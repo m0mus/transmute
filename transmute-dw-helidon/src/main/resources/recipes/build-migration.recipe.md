@@ -29,12 +29,117 @@ From the existing build file, capture:
 Replace the entire `pom.xml` using the Helidon 4 SE template below as the structural base.
 Fill in the captured identity values. Then:
 
+> **CRITICAL — DO NOT remove `com.fasterxml.jackson.*` dependencies.** Jackson is used by
+> application DTOs and is NOT part of the Dropwizard framework. Helidon does not bundle it.
+> Dropping Jackson will cause `@JsonProperty` compile errors in DTO classes.
+> Treat Jackson as an application dependency and always carry it over.
+
 - **Remove** all dependencies whose `groupId` matches any of:
   - `io.dropwizard`
   - `org.glassfish.jersey`
   - `com.codahale.metrics`
   - `javax.ws.rs` / `jakarta.ws.rs`
   - `org.eclipse.jetty`
+- **Keep `com.fasterxml.jackson`** dependencies — Jackson is used by application code (DTOs with
+  `@JsonProperty`, etc.) and is NOT a Dropwizard-only dependency. Helidon does not bundle Jackson
+  by default, so these must be preserved. Common ones:
+  - `com.fasterxml.jackson.core:jackson-annotations`
+  - `com.fasterxml.jackson.core:jackson-databind`
+  - `com.fasterxml.jackson.core:jackson-core`
+  - Any `com.fasterxml.jackson.datatype:*` or `com.fasterxml.jackson.module:*`
+  If they were managed by the Dropwizard parent BOM (no explicit version), add explicit versions:
+  ```xml
+  <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-annotations</artifactId>
+      <version>2.18.3</version>
+  </dependency>
+  ```
+- **If the project uses Bean Validation** (i.e., has `javax.validation`, `jakarta.validation`,
+  `org.hibernate.validator.constraints`, or `io.dropwizard.validation` imports), add:
+  ```xml
+  <dependency>
+      <groupId>io.helidon.validation</groupId>
+      <artifactId>helidon-validation</artifactId>
+  </dependency>
+  ```
+  `helidon-bundles-apt` (already in the template's annotation processor paths) covers the
+  `@Validation.Validated` code-generation processor — no additional processor path is needed.
+- **If the project uses metrics annotations** (i.e., has `com.codahale.metrics.annotation.Timed`,
+  `@Metered`, `@Counted`, or `MetricRegistry`), add Helidon Metrics dependencies:
+  ```xml
+  <dependency>
+      <groupId>io.helidon.metrics</groupId>
+      <artifactId>helidon-metrics-api</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>io.helidon.webserver.observe</groupId>
+      <artifactId>helidon-webserver-observe-metrics</artifactId>
+  </dependency>
+  ```
+- **If the project uses Hibernate/JPA** (i.e., has `io.dropwizard:dropwizard-hibernate` or
+  `javax.persistence`/`jakarta.persistence` imports), add the Helidon Data dependencies:
+  ```xml
+  <dependency>
+      <groupId>io.helidon.data</groupId>
+      <artifactId>helidon-data</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>io.helidon.data.sql.datasource</groupId>
+      <artifactId>helidon-data-sql-datasource-hikari</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>io.helidon.data.jakarta.persistence</groupId>
+      <artifactId>helidon-data-jakarta-persistence</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>jakarta.persistence</groupId>
+      <artifactId>jakarta.persistence-api</artifactId>
+  </dependency>
+  ```
+  Also keep the JPA provider that was already present (e.g., `org.eclipse.persistence:org.eclipse.persistence.jpa`
+  or `org.hibernate.orm:hibernate-core`). If the original project used Hibernate via Dropwizard
+  (`dropwizard-hibernate`), add Hibernate explicitly:
+  ```xml
+  <dependency>
+      <groupId>org.hibernate.orm</groupId>
+      <artifactId>hibernate-core</artifactId>
+      <version>6.6.13.Final</version>
+  </dependency>
+  ```
+  And add the Helidon Data codegen annotation processor alongside `helidon-bundles-apt`:
+  ```xml
+  <path>
+      <groupId>io.helidon.data.jakarta.persistence</groupId>
+      <artifactId>helidon-data-jakarta-persistence-codegen</artifactId>
+      <version>${helidon.version}</version>
+  </path>
+  ```
+  Keep any JDBC driver dependencies (e.g., `com.h2database:h2`, `com.mysql:mysql-connector-j`).
+- **If the project uses authentication/authorization** (i.e., has `io.dropwizard:dropwizard-auth`,
+  `@RolesAllowed`, `@PermitAll`, or `@DenyAll` annotations), add the Helidon Security dependencies:
+  ```xml
+  <dependency>
+      <groupId>io.helidon.webserver</groupId>
+      <artifactId>helidon-webserver-security</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>io.helidon.security</groupId>
+      <artifactId>helidon-security</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>io.helidon.security</groupId>
+      <artifactId>helidon-security-annotations</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>io.helidon.security.providers</groupId>
+      <artifactId>helidon-security-providers-http-auth</artifactId>
+  </dependency>
+  <dependency>
+      <groupId>io.helidon.security.abac</groupId>
+      <artifactId>helidon-security-abac-role</artifactId>
+  </dependency>
+  ```
 - **Keep** all other application dependencies (databases, serialization, utilities, etc.) and
   carry them into the `<dependencies>` section of the new POM.
 - **Keep** any `<dependencyManagement>` entries that are not Dropwizard-related.
@@ -99,10 +204,23 @@ Fill in the captured identity values. Then:
             <groupId>io.helidon.health</groupId>
             <artifactId>helidon-health</artifactId>
         </dependency>
+        <!-- helidon-validation added conditionally above if project uses Bean Validation -->
+
+        <!-- REQUIRED: Jackson — application DTOs use @JsonProperty, @JsonIgnore, etc.
+             Helidon does NOT bundle Jackson. These MUST be carried over from the original POM.
+             If the original POM had no explicit version (managed by Dropwizard BOM), use 2.18.3. -->
         <dependency>
-            <groupId>io.helidon.validation</groupId>
-            <artifactId>helidon-validation</artifactId>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>2.18.3</version>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.18.3</version>
+        </dependency>
+        <!-- Add any other com.fasterxml.jackson.* deps that were in the original POM -->
+
         <!-- Preserved application dependencies go here -->
     </dependencies>
 
