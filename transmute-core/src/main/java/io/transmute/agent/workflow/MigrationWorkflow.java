@@ -7,28 +7,26 @@ import io.transmute.migration.Workspace;
 /**
  * Runs the Transmute migration pipeline as plain sequential Java.
  *
- * <p>Pipeline (12 steps):
+ * <p>Pipeline (10 steps):
  * <ol>
  *   <li>Copy project to output dir</li>
  *   <li>Scan inventory</li>
  *   <li>Analyze project (AI produces a structured summary for recipe context)</li>
  *   <li>Discover migrations</li>
  *   <li>Build migration plan</li>
- *   <li>Human approval (if !autoApprove)</li>
  *   <li>Execute migrations (Java migrations + AI recipes/features)</li>
- *   <li>Human review gate (if !autoApprove)</li>
  *   <li>Scan TODOs (collect TRANSMUTE markers)</li>
  *   <li>Compile-fix loop (max 5 iterations)</li>
  *   <li>Test-fix loop (max 5 iterations)</li>
  *   <li>Generate report</li>
  * </ol>
  *
- * <p>AI is used in steps 3 (project analysis), 7 (recipe/feature agent calls),
- * and 10–11 (fix agents).
+ * <p>AI is used in steps 3 (project analysis), 6 (recipe/feature agent calls),
+ * and 8–9 (fix agents).
  */
 public class MigrationWorkflow {
 
-    private static final int TOTAL_STEPS = 12;
+    private static final int TOTAL_STEPS = 10;
 
     private final TransmuteConfig config;
     private final MarkdownMigrationLoader loader = new MarkdownMigrationLoader();
@@ -57,20 +55,16 @@ public class MigrationWorkflow {
         planRenderer.printAndSave();
         Out.rule();
 
-        approvePlan();                                                    // step 6
-
         var execResult = new MigrationExecutor(config, projectSummary)
                 .execute(plan, new Workspace(config.projectDir(), config.outputDir(), config.dryRun()),
-                        7, TOTAL_STEPS);                                 // step 7
-
-        reviewGate();                                                     // step 8
+                        6, TOTAL_STEPS);                                 // step 6
 
         var repairResult = new RepairLoopService(config, projectSummary,
                 planRenderer.buildCatalogHints(), hints)
-                .repair(execResult, 10, 11, TOTAL_STEPS);                // steps 10–11
+                .repair(execResult, 8, 9, TOTAL_STEPS);                 // steps 8–9
 
         new ReportWriter(config, plan, inventory, catalog)
-                .writeReports(execResult, repairResult, 9, 12, TOTAL_STEPS); // steps 9, 12
+                .writeReports(execResult, repairResult, 7, 10, TOTAL_STEPS); // steps 7, 10
 
         printDone();
     }
@@ -89,34 +83,6 @@ public class MigrationWorkflow {
         Out.rule();
     }
 
-    private void approvePlan() {
-        Out.step(6, TOTAL_STEPS, "Plan approval");
-        if (config.autoApprove()) {
-            Out.info(Out.DIM + "auto-approve" + Out.RESET);
-            Out.rule();
-            return;
-        }
-        String answer = readUserInput("\n  Proceed with migration? (yes/no): ");
-        if (answer == null || !answer.trim().toLowerCase().startsWith("y")) {
-            throw new RuntimeException("Migration aborted by user.");
-        }
-        Out.rule();
-    }
-
-    private void reviewGate() {
-        Out.step(8, TOTAL_STEPS, "Review changes");
-        if (config.autoApprove()) {
-            Out.info(Out.DIM + "auto-approve" + Out.RESET);
-            Out.rule();
-            return;
-        }
-        System.out.println("  Output: " + config.outputDir());
-        String answer = readUserInput("\n  Approve and proceed to compile+test? (yes/no): ");
-        if (answer == null || !answer.trim().toLowerCase().startsWith("y")) {
-            throw new RuntimeException("Migration stopped at review step.");
-        }
-        Out.rule();
-    }
 
     // ── Banner ────────────────────────────────────────────────────────────────
 
@@ -150,7 +116,6 @@ public class MigrationWorkflow {
         System.out.println(d + "  Project:         " + r + config.projectDir());
         System.out.println(d + "  Output:          " + r + config.outputDir());
         System.out.println(d + "  Dry run:         " + r + (config.dryRun() ? "yes" : "no"));
-        System.out.println(d + "  Auto-approve:    " + r + (config.autoApprove() ? "yes" : "no"));
         System.out.println(d + "  Verbose:         " + r + (config.verbose() ? "yes" : "no"));
         System.out.println();
     }
@@ -170,16 +135,4 @@ public class MigrationWorkflow {
         };
     }
 
-    private String readUserInput(String prompt) {
-        System.out.print(prompt);
-        var console = System.console();
-        if (console != null) {
-            return console.readLine();
-        }
-        try {
-            return new java.io.BufferedReader(new java.io.InputStreamReader(System.in)).readLine();
-        } catch (Exception e) {
-            return "no";
-        }
-    }
 }

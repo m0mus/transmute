@@ -17,7 +17,6 @@ public record TransmuteConfig(
         Integer modelTimeoutSeconds,
         boolean forceHttp1,
         String ociProfile,
-        boolean autoApprove,
         boolean verbose,
         boolean dryRun,
         List<String> activeProfiles
@@ -37,7 +36,6 @@ public record TransmuteConfig(
                 envInt("TRANSMUTE_MODEL_TIMEOUT_SECONDS", null),
                 envBool("TRANSMUTE_FORCE_HTTP1", false),
                 env("OCI_PROFILE", "DEFAULT"),
-                envBool("TRANSMUTE_AUTO_APPROVE", false),
                 envBool("TRANSMUTE_VERBOSE", false),
                 envBool("TRANSMUTE_DRY_RUN", false),
                 List.of()
@@ -71,7 +69,6 @@ public record TransmuteConfig(
      *   --base-url &lt;url&gt;
      *   --model-timeout-seconds &lt;seconds&gt;
      *   --oci-profile &lt;name&gt;
-     *   --auto-approve
      *   --verbose
      *   --dry-run
      *   --profile &lt;name&gt;         (repeatable Maven profile)
@@ -88,7 +85,6 @@ public record TransmuteConfig(
         Integer modelTimeoutSeconds = d.modelTimeoutSeconds();
         boolean forceHttp1 = d.forceHttp1();
         String ociProfile = d.ociProfile();
-        boolean autoApprove = d.autoApprove();
         boolean verbose = d.verbose();
         boolean dryRun = d.dryRun();
         var activeProfiles = new java.util.ArrayList<String>();
@@ -107,7 +103,6 @@ public record TransmuteConfig(
                 case "--force-http1"         -> forceHttp1 = true;
                 case "--oci-profile"         -> { if (i + 1 < args.length) ociProfile = args[++i]; }
                 case "--profile"             -> { if (i + 1 < args.length) activeProfiles.add(args[++i]); }
-                case "--auto-approve"        -> autoApprove = true;
                 case "--verbose"             -> verbose = true;
                 case "--dry-run"             -> dryRun = true;
             }
@@ -119,7 +114,7 @@ public record TransmuteConfig(
 
         return new TransmuteConfig(projectDir, outputDir, modelProvider, modelId, apiKey, baseUrl,
                 modelTimeoutSeconds, forceHttp1,
-                ociProfile, autoApprove, verbose, dryRun, activeProfiles);
+                ociProfile, verbose, dryRun, activeProfiles);
     }
 
     private static String env(String name, String defaultValue) {

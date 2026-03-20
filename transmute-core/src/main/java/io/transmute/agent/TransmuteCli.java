@@ -23,7 +23,6 @@ import io.transmute.agent.workflow.MigrationWorkflow;
  *   --model-timeout-seconds &lt;n&gt;   Override chat request timeout in seconds (OpenAI-compatible)
  *   --force-http1                Force HTTP 1.1 for OpenAI-compatible local LLMs
  *   --oci-profile &lt;name&gt;         OCI config profile (default: DEFAULT)
- *   --auto-approve               Skip human approval gates (non-interactive)
  *   --verbose                    Verbose tool progress logging
  *   --dry-run                    Collect changes without writing files
  * </pre>
@@ -58,15 +57,9 @@ public class TransmuteCli {
             var workflow = new MigrationWorkflow(config);
             workflow.run();
         } catch (Exception e) {
-            var msg = e.getMessage();
-            if (msg != null && (msg.contains("aborted by user")
-                    || msg.contains("stopped at review"))) {
-                System.out.println(msg);
-            } else {
-                System.err.println("Migration failed: " + msg);
-                e.printStackTrace();
-                System.exit(1);
-            }
+            System.err.println("Migration failed: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
         }
     }
 
@@ -100,7 +93,6 @@ public class TransmuteCli {
               --model-timeout-seconds <n>  Chat request timeout in seconds (OpenAI-compatible)
               --force-http1               Force HTTP 1.1 (for local LLMs that don't support HTTP/2)
               --oci-profile <name>         OCI config profile (default: DEFAULT)
-              --auto-approve               Skip human approval gates (non-interactive)
               --verbose                    Verbose tool progress logging
               --dry-run                    Collect changes without writing files
             Environment variables:
@@ -110,7 +102,6 @@ public class TransmuteCli {
               TRANSMUTE_MODEL_BASE_URL     Base URL override
               TRANSMUTE_MODEL_TIMEOUT_SECONDS  Chat request timeout in seconds
               TRANSMUTE_FORCE_HTTP1        true/false to force HTTP 1.1
-              TRANSMUTE_AUTO_APPROVE       true/false to skip approvals
               TRANSMUTE_VERBOSE            true/false for tool progress logging
               TRANSMUTE_DRY_RUN            true/false for dry run mode
             """);

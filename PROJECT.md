@@ -15,7 +15,7 @@ migration module is on the classpath.
 
 1. Provide a reusable, domain-agnostic migration orchestration pipeline.
 2. Make migration authoring easy — a markdown file is the minimum viable migration.
-3. Make the migration plan visible and auditable before execution (human-in-the-loop).
+3. Make the migration plan visible and auditable before execution.
 4. Recover from compile errors with an AI agent; recover from test failures likewise.
 5. Keep migration modules as pure resource JARs — no Java code required.
 
@@ -47,7 +47,7 @@ scope only, for recipe integration tests. The same pattern applies to any migrat
 
 ```
 TransmuteCli (entry point)
-  └── MigrationWorkflow (12-step sequential pipeline)
+  └── MigrationWorkflow (10-step sequential pipeline)
         │
         ├── [1]  CopyProjectTool       copy source → output dir (original untouched)
         ├── [2]  JavaProjectVisitor    build ProjectInventory (Java types, imports,
@@ -59,24 +59,20 @@ TransmuteCli (entry point)
         │                              deterministic sort by order (then name);
         │                              derive scope (FILE vs PROJECT);
         │                              print file-centric plan; save migration-plan.txt
-        ├── [6]  ApprovePlan           human gate (skipped if --auto-approve)
-        │
-        ├── [7]  ExecuteMigrations
+        ├── [6]  ExecuteMigrations
         │         ├── FILE-scoped recipes  → one agent call per file
         │         │     (all recipes targeting the same file merged into one prompt)
         │         ├── PROJECT-scoped migrations → one agent call for the whole output dir
         │         │                              (can modify multiple files)
         │         └── All agents append to migration-journal.md (cross-recipe context)
         │
-        ├── [8]  ReviewGate            human gate (skipped if --auto-approve)
-        │
-        ├── [9]  ScanTodos             scan migrated files for TRANSMUTE[CATEGORY] markers;
+        ├── [7]  ScanTodos             scan migrated files for TRANSMUTE[CATEGORY] markers;
         │                              write migration-todos.txt
-        ├── [10] CompileFixLoop        mvn compile → FixCompileErrorsAgent (max 5 iterations)
+        ├── [8]  CompileFixLoop        mvn compile → FixCompileErrorsAgent (max 5 iterations)
         │                              (reads migration-journal.md for context)
-        ├── [11] TestFixLoop           mvn test    → FixTestFailuresAgent  (max 5 iterations)
+        ├── [9]  TestFixLoop           mvn test    → FixTestFailuresAgent  (max 5 iterations)
         │                              (reads migration-journal.md for context)
-        └── [12] GenerateReport        writes migration-report.json + migration-results.txt;
+        └── [10] GenerateReport        writes migration-report.json + migration-results.txt;
                                        prints styled console summary
 ```
 
@@ -183,7 +179,7 @@ io.transmute.agent/
     FixCompileErrorsAgent.java  AI service (LC4j): fixes compile errors using file I/O tools
     FixTestFailuresAgent.java   AI service (LC4j): fixes test failures using file I/O tools
   workflow/
-    MigrationWorkflow.java    12-step sequential pipeline; ANSI-colored console output
+    MigrationWorkflow.java    10-step sequential pipeline; ANSI-colored console output
 
 io.transmute.migration/
   Migration.java              Planning interface: name(), order()
@@ -246,13 +242,12 @@ interactions. Three providers are supported:
 |------|-----|---------|
 | 1–2 | No | Pure Java |
 | 3 — Project analysis | **Yes** | `ProjectAnalysisAgent` produces structured summary |
-| 4–6 | No | Pure Java |
-| 7 — Recipe/Feature execution | **Yes** | `SingleFileAgent` (FILE) or project-scope agent |
-| 8 | No | Human gate |
-| 9 | No | TODO scan |
-| 10 — Compile fix | **Yes** | `FixCompileErrorsAgent` with file I/O tools |
-| 11 — Test fix | **Yes** | `FixTestFailuresAgent` with file I/O tools |
-| 12 | No | JSON report + console summary |
+| 4–5 | No | Pure Java |
+| 6 — Recipe/Feature execution | **Yes** | `SingleFileAgent` (FILE) or project-scope agent |
+| 7 | No | TODO scan |
+| 8 — Compile fix | **Yes** | `FixCompileErrorsAgent` with file I/O tools |
+| 9 — Test fix | **Yes** | `FixTestFailuresAgent` with file I/O tools |
+| 10 | No | JSON report + console summary |
 
 ### Prompt logging
 

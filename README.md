@@ -21,20 +21,18 @@ For the full design, rationale, and API reference see [PROJECT.md](PROJECT.md).
  4. Discover migrations: load *.recipe.md / *.feature.md files from the classpath
  5. Plan: evaluate trigger conditions against the inventory; resolve target files;
     sort by order; show file-centric plan; save migration-plan.txt
- 6. Human approval gate — the plan is shown before anything is executed
- 7. Execute migrations in order:
+ 6. Execute migrations in order:
       • Recipes (FILE scope) — one AI agent call per file, all matching recipes merged
       • Project-scoped migrations — one AI agent call for the whole output directory
         (can modify multiple files)
       • Each agent appends to a migration journal for cross-recipe context
- 8. Human review gate
- 9. Scan for TRANSMUTE TODOs: collect TRANSMUTE[CATEGORY] markers left in migrated files;
+ 7. Scan for TRANSMUTE TODOs: collect TRANSMUTE[CATEGORY] markers left in migrated files;
     save migration-todos.txt
-10. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
+ 8. Compile-fix loop: AI agent fixes compile errors (max 5 iterations)
      — reads migration journal for context on what was changed and why
-11. Test-fix loop: AI agent fixes test failures (max 5 iterations)
+ 9. Test-fix loop: AI agent fixes test failures (max 5 iterations)
      — reads migration journal for context on what was changed and why
-12. Generate a migration report: migration-report.json + migration-results.txt;
+10. Generate a migration report: migration-report.json + migration-results.txt;
     print a styled console summary (outcomes, file results, TODOs, postcheck failures)
 ```
 
@@ -146,8 +144,7 @@ java -cp "$CORE_JAR:$RECIPES_JAR" \
      --project-dir  /path/to/my-dropwizard-app \
      --output-dir   .tmp/transmuted \
      --model-provider openai \
-     --api-key $OPENAI_API_KEY \
-     --auto-approve
+     --api-key $OPENAI_API_KEY
 ```
 
 **Windows**
@@ -157,8 +154,7 @@ java -cp transmute-core.jar;transmute-dw-helidon.jar ^
      --project-dir  C:\path\to\my-dropwizard-app ^
      --output-dir   .tmp\transmuted ^
      --model-provider openai ^
-     --api-key %OPENAI_API_KEY% ^
-     --auto-approve
+     --api-key %OPENAI_API_KEY%
 ```
 
 ### Key options
@@ -172,7 +168,6 @@ java -cp transmute-core.jar;transmute-dw-helidon.jar ^
 | `--api-key` | *(required for openai)* | API key |
 | `--base-url` | *(provider default)* | Override base URL (e.g. for local models) |
 | `--profile` | *(none)* | Maven profile(s) to activate during compile/test (repeatable) |
-| `--auto-approve` | false | Skip human approval/review gates |
 | `--dry-run` | false | Compute changes but do not write files |
 
 ### Environment variables
@@ -240,7 +235,7 @@ from `recipes/` and `features/` on the classpath automatically.
 ---
 
 See [transmute-dw-helidon/README.md](transmute-dw-helidon/README.md) for the full
-Dropwizard→Helidon migration reference: all 12 migrations, what each one does, and what
+Dropwizard→Helidon migration reference: all migrations, what each one does, and what
 requires manual follow-up.
 
 See [PROJECT.md](PROJECT.md) for the full design: trigger system, scope derivation,
