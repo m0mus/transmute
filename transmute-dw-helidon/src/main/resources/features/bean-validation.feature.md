@@ -177,9 +177,3 @@ adds it as part of the Helidon BOM. If it is missing, add:
 ```
 Do NOT modify `pom.xml` in this step — that is handled by the Build File Migration recipe.
 
-## DO NOT touch
-
-Do NOT modify anything related to:
-- JAX-RS / `@Http.*` annotations — handled by the REST Resource recipe.
-- `@Inject`, `@Singleton` — handled by the Injection Migration feature.
-- `@JsonProperty`, `@JsonIgnore` — handled by other recipes.
