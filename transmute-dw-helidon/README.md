@@ -19,14 +19,16 @@ front-matter; scope is derived automatically by the planner.
 | 1 | `recipes/build-migration.recipe.md` | recipe | FILE | `pom.xml` / Gradle / Ant → Helidon 4 SE |
 | 2 | `recipes/application-bootstrap.recipe.md` | recipe | FILE | `Application<T>` → `Main` class |
 | 3 | `recipes/dropwizard-configuration.recipe.md` | recipe | FILE | `Configuration` subclass → Helidon `Config` accessor |
+| **4** | **`recipes/hibernate-data.recipe.md`** | recipe | FILE | **JPA entities + `AbstractDAO` → Helidon DbClient skeleton** |
 | 5 | `recipes/jaxrs-rest-resource.recipe.md` | recipe | FILE | JAX-RS `@Path` resources → `@Http.Endpoint` |
 | 6 | `recipes/exception-mapper.recipe.md` | recipe | FILE | `ExceptionMapper<E>` → error handler TODO |
 | 10 | `recipes/managed-lifecycle.recipe.md` | recipe | FILE | `Managed` → `@Service.PostConstruct`/`@Service.PreDestroy` |
-| 12 | `recipes/http-client.recipe.md` | recipe | FILE | `JerseyClientBuilder`/`HttpClientBuilder` → WebClient TODOs |
-| 15 | `recipes/metrics-migration.recipe.md` | recipe | FILE | Codahale metrics → Micrometer |
+| 12 | `recipes/http-client.recipe.md` | recipe | FILE | `JerseyClientBuilder` → WebClient TODOs |
 | 20 | `recipes/health-check.recipe.md` | recipe | FILE | DW `HealthCheck` → Helidon `HealthCheck` |
-| 50 | `features/bean-validation.feature.md` | feature | FILE | `javax.validation.*` → Helidon `@Validation.*`; DW validators → TODOs |
+| **25** | **`recipes/unsupported-jaxrs.recipe.md`** | recipe | FILE | **Filters, views, tasks, commands → stubbed with TODOs** |
+| 50 | `features/bean-validation.feature.md` | feature | FILE | `javax.validation.*` → `@Validation.*` |
 | 50 | `features/injection-migration.feature.md` | feature | FILE | Guice/HK2/`javax.inject` → Service Registry |
+| **50** | **`features/metrics-migration.feature.md`** | feature | FILE | **Codahale metrics → Micrometer** |
 | 50 | `features/unit-of-work.feature.md` | feature | FILE | `@UnitOfWork`/`AbstractDAO` → DbClient TODOs |
 | 50 | `features/security-auth.feature.md` | feature | FILE | `@Auth`/`Authenticator`/`Authorizer` → Security TODOs |
 
@@ -220,28 +222,36 @@ imports automatically — the developer completes the migration after reviewing 
 
 ---
 
-## Metrics Migration — order 15, FILE scope
+## Hibernate / JPA Data Migration — order 4, FILE scope
 
-`recipes/metrics-migration.recipe.md`
+`recipes/hibernate-data.recipe.md`
 
-Triggered on files importing from `com.codahale.metrics` or `io.dropwizard.metrics`.
-Postchecks: forbids residual Codahale/Dropwizard metrics imports.
+Triggered on files importing from `io.dropwizard.hibernate` and extending `AbstractDAO`,
+or importing from `javax.persistence` / `jakarta.persistence` and annotated with `@Entity`.
+Postchecks: forbids `io.dropwizard.hibernate`, `javax.persistence`, and `jakarta.persistence` imports.
 
 ### What it does
 
-| Before | After |
-|--------|-------|
-| `@Timed` (Codahale) | `@io.micrometer.core.annotation.Timed` |
-| `@Counted` (Codahale) | `@io.micrometer.core.annotation.Counted` |
-| `@Metered` | `@Counted` + TODO comment |
-| `@ExceptionMetered` | Removed + TODO comment |
-| `MetricRegistry` field | `MeterRegistry` field (`@Service.Inject`) |
-| `metrics.timer(name(...))` | `Timer.builder("...").register(meterRegistry)` |
-| `metrics.counter(name(...))` | `Counter.builder("...").register(meterRegistry)` |
-| `metrics.histogram(name(...))` | `DistributionSummary.builder("...").register(meterRegistry)` |
-| `metrics.gauge(name, obj, fn)` | `Gauge.builder("...", obj, fn).register(meterRegistry)` |
-| `timer.update(duration, unit)` | `timer.record(duration, unit)` |
-| `counter.inc()` | `counter.increment()` |
+- Converts JPA `@Entity` / `@Column` annotations to a plain Helidon DbClient row-mapper skeleton.
+- Replaces `extends AbstractDAO<T>` with a plain class and inserts `DW_MIGRATION_TODO` comments
+  for `DbClient`-based CRUD methods.
+- Removes `SessionFactory` injection and related Hibernate session calls.
+
+---
+
+## Unsupported JAX-RS / Dropwizard Patterns — order 25, FILE scope
+
+`recipes/unsupported-jaxrs.recipe.md`
+
+Triggered on files whose supertypes include: `ContainerRequestFilter`, `ContainerResponseFilter`,
+`DynamicFeature`, `ExceptionMapper`, `View`, `Task`, `Command`, or `ConfiguredCommand`.
+
+### What it does
+
+- Stubs each class with a `DW_MIGRATION_TODO` block explaining there is no direct Helidon
+  equivalent and describing the recommended manual approach.
+- Removes all Dropwizard / JAX-RS imports that no longer compile.
+- Preserves application-domain fields and methods for developer reference.
 
 ---
 
@@ -369,6 +379,43 @@ implementations with `DW_MIGRATION_TODO` comments pointing to Helidon Security. 
 `authenticate()` / `authorize()` methods are wrapped in a block comment for developer
 reference so that all `io.dropwizard.auth.*` imports can be cleanly removed. Does not add
 Helidon Security imports automatically.
+
+---
+
+## Metrics Migration — feature, FILE scope (default order 50)
+
+`features/metrics-migration.feature.md`
+
+Triggered on files importing from `com.codahale.metrics` or `io.dropwizard.metrics`.
+Postchecks: forbids residual Codahale/Dropwizard metrics imports.
+
+### What it does
+
+| Before | After |
+|--------|-------|
+| `@Timed` (Codahale) | `@io.micrometer.core.annotation.Timed` |
+| `@Counted` (Codahale) | `@io.micrometer.core.annotation.Counted` |
+| `@Metered` | `@Counted` + TODO comment |
+| `@ExceptionMetered` | Removed + TODO comment |
+| `MetricRegistry` field | `MeterRegistry` field (`@Service.Inject`) |
+| `metrics.timer(name(...))` | `Timer.builder("...").register(meterRegistry)` |
+| `metrics.counter(name(...))` | `Counter.builder("...").register(meterRegistry)` |
+| `metrics.histogram(name(...))` | `DistributionSummary.builder("...").register(meterRegistry)` |
+| `metrics.gauge(name, obj, fn)` | `Gauge.builder("...", obj, fn).register(meterRegistry)` |
+| `timer.update(duration, unit)` | `timer.record(duration, unit)` |
+| `counter.inc()` | `counter.increment()` |
+
+---
+
+## Converter Hints
+
+`hints/compile-hints.md` and `hints/test-hints.md` are injected into the compile-fix
+and test-fix agents respectively. Key guidance included:
+
+- Dropwizard task/view classes → stub as plain class with TODO; do not try to find an equivalent
+- Never restore `io.dropwizard.*` imports that were intentionally removed by migration
+- Resource tests → direct unit tests instantiating the class directly, not HTTP integration tests
+- `@Auth` parameters were removed during migration; do not pass principals in test calls
 
 ---
 

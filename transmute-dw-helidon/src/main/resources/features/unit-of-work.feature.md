@@ -10,6 +10,8 @@ owns:
   types:
     - io.dropwizard.hibernate.AbstractDAO
     - io.dropwizard.hibernate.HibernateBundle
+    - io.dropwizard.db.DBIFactory
+    - io.dropwizard.jdbi3.JdbiFactory
     - org.hibernate.SessionFactory
 postchecks:
   forbidImports:

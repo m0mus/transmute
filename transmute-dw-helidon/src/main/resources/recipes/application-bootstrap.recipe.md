@@ -13,22 +13,23 @@ postchecks:
     - io.dropwizard.setup.Environment
 ---
 
-This file is the Dropwizard `Application<T>` class. Rewrite it as a Helidon 4 SE `Main` class.
+This file is the Dropwizard `Application<T>` class. Rewrite it as a Helidon 4 SE entry point.
 
-## Step 1 — Rewrite as Helidon SE Main
+## Step 1 — Rewrite as Helidon SE entry point
 
-Replace the entire class body with the Helidon 4 SE `Main` pattern:
+**Keep the original class name and file name.** The Helidon `main()` method does not need to
+live in a class called `Main`. Replace the class body with the Helidon 4 SE pattern:
 
 ```java
 // Before — Dropwizard
-public class MyApp extends Application<MyConfig> {
-    public static void main(String[] args) throws Exception { new MyApp().run(args); }
+public class HelloWorldApplication extends Application<HelloWorldConfiguration> {
+    public static void main(String[] args) throws Exception { new HelloWorldApplication().run(args); }
 
     @Override
-    public void initialize(Bootstrap<MyConfig> bootstrap) { bootstrap.addBundle(...); }
+    public void initialize(Bootstrap<HelloWorldConfiguration> bootstrap) { bootstrap.addBundle(...); }
 
     @Override
-    public void run(MyConfig config, Environment environment) {
+    public void run(HelloWorldConfiguration config, Environment environment) {
         environment.jersey().register(new MyResource());
         environment.lifecycle().manage(new MyManagedService());
     }
@@ -36,15 +37,15 @@ public class MyApp extends Application<MyConfig> {
 ```
 
 ```java
-// After — Helidon 4 SE
-public class Main {
+// After — Helidon 4 SE (same class name, same file)
+public class HelloWorldApplication {
     public static void main(String[] args) {
         Config config = Config.create();
         Config.global(config);
 
         WebServer server = WebServer.builder()
                 .config(config.get("server"))
-                .routing(Main::routing)
+                .routing(HelloWorldApplication::routing)
                 .build()
                 .start();
 
@@ -59,21 +60,21 @@ public class Main {
 ```
 
 Rules:
-- Rename the class to `Main` regardless of the original class name.
-- Update `<mainClass>` in `pom.xml` (or equivalent) to reference the renamed class.
+- **Keep the original class name** — do NOT rename to `Main`. This avoids filename/classname mismatches.
+- Remove `extends Application<T>` and all Dropwizard imports (`io.dropwizard.*`).
 - Add required imports:
   - `io.helidon.config.Config`
   - `io.helidon.webserver.WebServer`
   - `io.helidon.webserver.http.HttpRouting`
-- Remove all Dropwizard imports (`io.dropwizard.*`).
+- Ensure `<mainClass>` in `pom.xml` points to this class's fully qualified name.
 
 ## Step 2 — Handle initialize() bundles
 
 If the original `initialize()` method registered bundles via `bootstrap.addBundle(...)`, add a
-TODO comment inside the `routing()` method:
+`TRANSMUTE[manual]` comment inside the `routing()` method:
 
 ```java
-// TODO: review bundle migrations — bundle registrations from initialize() were removed
+// TRANSMUTE[manual]: review bundle migrations — bundle registrations from initialize() were removed
 ```
 
 ## Step 3 — Handle run() registrations
@@ -81,17 +82,17 @@ TODO comment inside the `routing()` method:
 For each `environment.jersey().register(new XyzResource())` in the original `run()`:
 - If `XyzResource` has been (or will be) migrated to use `@RestServer.Endpoint` + `@Service.Singleton`,
   no routing code is needed — it is auto-discovered.
-- Otherwise, add a TODO comment in `routing()`:
+- Otherwise, add a `TRANSMUTE[manual]` comment in `routing()`:
   ```java
-  // TODO: register XyzResource if not annotated with @RestServer.Endpoint
+  // TRANSMUTE[manual]: register XyzResource if not annotated with @RestServer.Endpoint
   ```
 
 For each `environment.lifecycle().manage(new XyzManaged())`:
 - If `XyzManaged` has been (or will be) migrated to use `@Service.Singleton` with
   `@Service.PostConstruct` / `@Service.PreDestroy`, no explicit wiring is needed.
-- Otherwise, add a TODO comment:
+- Otherwise, add a `TRANSMUTE[manual]` comment:
   ```java
-  // TODO: XyzManaged lifecycle — ensure @Service.PostConstruct/@Service.PreDestroy are set
+  // TRANSMUTE[manual]: XyzManaged lifecycle — ensure @Service.PostConstruct/@Service.PreDestroy are set
   ```
 
 ## Step 4 — Create application.yaml if absent

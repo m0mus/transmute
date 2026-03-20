@@ -41,7 +41,7 @@ public class MyConfig {
 
     public String host() { return config.get("host").asString().orElse("localhost"); }
 
-    // TODO: DatabaseFactory → configure DataSource via config.get("database")
+    // TRANSMUTE[manual]: DatabaseFactory -> configure DataSource via config.get("database")
     // See: https://helidon.io/docs/v4/se/dbclient
 }
 ```
@@ -66,9 +66,9 @@ For each field in the original class:
 2. **Complex / nested fields** (Dropwizard factory objects like `DatabaseFactory`,
    `HttpClientConfiguration`, etc.):
    - Remove the field declaration and getter.
-   - Add a TODO comment as a method stub:
+   - Add a `TRANSMUTE[manual]` comment as a method stub:
      ```java
-     // TODO: <OriginalType> → configure via config.get("<fieldName>")
+     // TRANSMUTE[manual]: <OriginalType> -> configure via config.get("<fieldName>")
      // See Helidon docs for the equivalent component
      ```
 
@@ -76,7 +76,7 @@ For each field in the original class:
    - Remove the field declaration and getter.
    - Add an accessor method using:
      - `config.get("<fieldName>").asList(<T>.class).orElse(List.of())`
-     - or add a `// TODO: map collection` comment for complex generic types.
+     - or add a `// TRANSMUTE[manual]: map collection` comment for complex generic types.
 
 ## Annotation removal
 
@@ -86,10 +86,10 @@ Remove the following annotations from fields and methods without replacement:
 - `@JsonAlias`
 - Any other Jackson annotation (`com.fasterxml.jackson.annotation.*`)
 
-Replace the following annotations with a TODO comment on the same line:
-- `@NotNull` → `// TODO: validate after reading`
-- `@Valid` → `// TODO: validate after reading`
-- `@NotEmpty`, `@Size`, `@Min`, `@Max` → `// TODO: validate after reading`
+Replace the following annotations with a `TRANSMUTE[manual]` comment on the same line:
+- `@NotNull` -> `// TRANSMUTE[manual]: validate after reading`
+- `@Valid` -> `// TRANSMUTE[manual]: validate after reading`
+- `@NotEmpty`, `@Size`, `@Min`, `@Max` -> `// TRANSMUTE[manual]: validate after reading`
 
 ## Imports
 

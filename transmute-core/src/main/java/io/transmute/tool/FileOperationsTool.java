@@ -99,6 +99,26 @@ public class FileOperationsTool {
         }
     }
 
+    @Tool("Delete a file in the output directory. Use when a file has been replaced by a new file at a different path (e.g., class rename).")
+    public String deleteFile(
+            @P("Path to the file to delete (relative to outputDir)") String filePath) {
+        try {
+            var resolved = resolveSafePath(filePath, "deleting");
+            if (resolved == null) return "Error deleting file: invalid path";
+            if (!Files.exists(resolved)) {
+                return "File does not exist: " + filePath;
+            }
+            if (Files.isDirectory(resolved)) {
+                return "Error deleting file: path is a directory, not a file: " + filePath;
+            }
+            Files.delete(resolved);
+            ToolLog.log("delete_file " + filePath);
+            return "Deleted " + filePath;
+        } catch (IOException e) {
+            return "Error deleting file: " + e.getMessage();
+        }
+    }
+
     @Tool("List all .java files in a project directory under outputDir, recursively.")
     public String listJavaFiles(
             @P("Path to the project directory (relative to outputDir)") String projectDir) {

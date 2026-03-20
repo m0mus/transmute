@@ -4,11 +4,13 @@ type: recipe
 triggers:
   - annotations: [javax.ws.rs.Path]
   - imports: [javax.ws.rs.]
+  - imports: [io.dropwizard.jersey.caching]
 order: 5
 postchecks:
   forbidImports:
     - javax.ws.rs.
     - jakarta.ws.rs.
+    - io.dropwizard.jersey.caching
 ---
 
 This file is a JAX-RS REST resource that must be migrated to Helidon 4 SE using the
@@ -73,11 +75,61 @@ that were used to unwrap them.
 Replace `javax.ws.rs.core.Response` / `jakarta.ws.rs.core.Response` return types:
 
 - Change method return type to `void` if the only usage is `Response.ok().build()` or similar simple success response.
-- Otherwise change return type to `ServerResponse` and add a TODO comment:
+- Otherwise change return type to `ServerResponse` and add a `TRANSMUTE[manual]` comment:
   ```java
-  // DW_MIGRATION_TODO[manual]: was Response -- adapt to ServerResponse / Helidon response API
+  // TRANSMUTE[manual]: was Response -- adapt to ServerResponse / Helidon response API
   ```
 - Import `io.helidon.webserver.http.ServerResponse`.
+
+## JAX-RS exception types
+
+Replace JAX-RS exception classes with their Helidon equivalents from `io.helidon.http`:
+
+| Remove (`javax.ws.rs` / `jakarta.ws.rs`)      | Add (`io.helidon.http`)         |
+|------------------------------------------------|---------------------------------|
+| `NotFoundException`                            | `NotFoundException`             |
+| `BadRequestException`                          | `BadRequestException`           |
+| `ForbiddenException`                           | `ForbiddenException`            |
+| `InternalServerErrorException`                 | `InternalServerException`       |
+| `NotAuthorizedException`                       | `UnauthorizedException`         |
+| `WebApplicationException`                      | `HttpException`                 |
+| `ClientErrorException`                         | `HttpException`                 |
+| `ServerErrorException`                         | `HttpException`                 |
+
+The Helidon exceptions have the same constructor pattern (`String message`) and
+(`String message, Throwable cause`). All extend `io.helidon.http.HttpException`.
+
+For any other JAX-RS exception type not listed above, replace with `HttpException`
+and pass the appropriate `io.helidon.http.Status` constant:
+
+```java
+// Before
+throw new NotAcceptableException("...");
+
+// After
+throw new HttpException("...", Status.NOT_ACCEPTABLE_406);
+```
+
+## CacheControl annotation
+
+Replace `@CacheControl` from `io.dropwizard.jersey.caching` with a `TRANSMUTE[manual]` comment.
+Helidon does not have a direct annotation equivalent — cache headers must be set
+programmatically on the `ServerResponse`.
+
+```java
+// Before
+@CacheControl(maxAge = 60)
+@GET
+public String getData() { ... }
+
+// After
+// TRANSMUTE[manual]: @CacheControl removed — set cache headers on ServerResponse:
+//   serverResponse.header(Http.HeaderNames.CACHE_CONTROL, "max-age=60");
+@Http.GET
+public String getData() { ... }
+```
+
+Remove import: `io.dropwizard.jersey.caching.CacheControl`
 
 ## @Produces / @Consumes
 
@@ -103,19 +155,19 @@ Unrecognized parameter types cause a compile-time `CodegenException`.
 For any method parameter annotated with `@Auth` (from `io.dropwizard.auth`), or any
 parameter of a Dropwizard auth type (`User`, `Principal`, `SecurityContext`, or any type
 used as the auth principal), **remove the parameter entirely** from the method signature.
-Add a TODO comment above the method:
+Add a `TRANSMUTE[manual]` comment above the method:
 
 ```java
-// DW_MIGRATION_TODO[manual]: @Auth User parameter removed -- inject via Helidon Security
+// TRANSMUTE[manual]: @Auth User parameter removed -- inject via Helidon Security
 //   See: https://helidon.io/docs/v4/se/security
 @Http.GET
 @Http.Path("/secret")
 public String showSecret() {
-    // DW_MIGRATION_TODO: obtain authenticated user from Helidon SecurityContext
+    // TRANSMUTE[manual]: obtain authenticated user from Helidon SecurityContext
 ```
 
 If the method body references the removed parameter, replace those usages with a
-placeholder or TODO comment so the code compiles:
+placeholder or `TRANSMUTE[manual]` comment so the code compiles:
 - For string formatting: use a placeholder like `"anonymous"`
 - For method calls on the removed object: comment them out with a TODO
 
@@ -123,15 +175,15 @@ placeholder or TODO comment so the code compiles:
 
 Similarly, remove any parameter annotated with `@Context` (from `javax.ws.rs.core`) or
 any `SecurityContext`, `HttpServletRequest`, `HttpServletResponse`, `UriInfo` parameter.
-These have no direct equivalent in Helidon declarative HTTP. Add a TODO comment.
+These have no direct equivalent in Helidon declarative HTTP. Add a `TRANSMUTE[manual]` comment.
 
 ## Dropwizard base class stripping
 
 If the class extends a Dropwizard class (e.g., `View`, `AbstractDAO`) or implements a
 Dropwizard interface (`Managed`, `Authenticator`, `Authorizer`, `UnauthorizedHandler`),
-remove the `extends`/`implements` clause and add a TODO comment on the class declaration line:
+remove the `extends`/`implements` clause and add a `TRANSMUTE[manual]` comment on the class declaration line:
 ```java
-// DW_MIGRATION_TODO[manual]: was extends/implements <ClassName> -- implement Helidon equivalent
+// TRANSMUTE[manual]: was extends/implements <ClassName> -- implement Helidon equivalent
 ```
 
 ## Bundle imports
@@ -151,6 +203,28 @@ Add required Helidon imports:
 - `io.helidon.webserver.http.RestServer` (for `@RestServer.Endpoint`)
 - `io.helidon.service.registry.Service` (for `@Service.Singleton`)
 - Any other Helidon imports needed based on what is used.
+
+## Helidon Data repository return types
+
+If this resource class calls methods on a `@Data.Repository` DAO (i.e., the DAO was
+migrated from a Dropwizard `AbstractDAO`), be aware that `CrudRepository.findAll()`
+returns `Stream<E>`, **not** `List<E>`.
+
+If the method assigns the result to a `List` or returns `List`:
+
+```java
+// Before (after DAO migration)
+public List<Person> listPeople() {
+    return peopleDAO.findAll();  // compile error: Stream cannot be converted to List
+}
+
+// After
+public List<Person> listPeople() {
+    return peopleDAO.findAll().collect(java.util.stream.Collectors.toList());
+}
+```
+
+Add `import java.util.stream.Collectors;` when using this pattern.
 
 ## DO NOT touch
 

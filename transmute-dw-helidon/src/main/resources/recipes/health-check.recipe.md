@@ -51,9 +51,9 @@ Replace Codahale `Result` factory methods with the Helidon `HealthCheckResponse`
 | `Result.unhealthy("msg")` | `HealthCheckResponse.builder().status(false).detail("message", "msg").build()` |
 | `Result.unhealthy(exception)` | `HealthCheckResponse.builder().status(false).detail("message", exception.getMessage()).build()` |
 
-If any other `Result.` usage remains after the above replacements, add a TODO comment:
+If any other `Result.` usage remains after the above replacements, add a `TRANSMUTE[manual]` comment:
 ```java
-// DW_MIGRATION_TODO[manual]: was Result.* — adapt to HealthCheckResponse builder
+// TRANSMUTE[manual]: was Result.* — adapt to HealthCheckResponse builder
 ```
 
 ## Exception handling

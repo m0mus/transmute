@@ -17,6 +17,7 @@ owns:
     - io.dropwizard.auth.Authenticator
     - io.dropwizard.auth.Authorizer
     - io.dropwizard.auth.UnauthorizedHandler
+    - io.dropwizard.auth.AuthFactory
     - io.dropwizard.auth.AuthDynamicFeature
     - io.dropwizard.auth.AuthValueFactoryProvider
 postchecks:

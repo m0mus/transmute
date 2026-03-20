@@ -12,6 +12,7 @@ owns:
     - com.google.inject.Inject
     - com.google.inject.Singleton
     - com.google.inject.Provides
+    - com.google.inject.name.Named
     - javax.inject.Inject
     - javax.inject.Singleton
     - javax.inject.Named

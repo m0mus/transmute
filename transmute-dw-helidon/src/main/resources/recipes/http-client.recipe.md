@@ -13,7 +13,7 @@ postchecks:
 
 This file uses the Dropwizard Jersey or Apache HTTP client (`JerseyClientBuilder`,
 `HttpClientBuilder`) and must be migrated to the Helidon 4 SE `WebClient`. The two APIs
-differ significantly, so the migration produces guided TODO comments rather than a full
+differ significantly, so the migration produces guided `TRANSMUTE[manual]` comments rather than a full
 automated rewrite.
 
 ## JerseyClientBuilder usages
@@ -21,24 +21,24 @@ automated rewrite.
 For each `new JerseyClientBuilder(environment).build(...)` call:
 
 1. Remove the call expression.
-2. Add a TODO comment in its place:
+2. Add a `TRANSMUTE[manual]` comment in its place:
    ```java
-   // DW_MIGRATION_TODO[manual]: was JerseyClientBuilder — use Helidon WebClient:
+   // TRANSMUTE[manual]: was JerseyClientBuilder — use Helidon WebClient:
    // WebClient client = WebClient.create();
    // See: https://helidon.io/docs/v4/se/webclient
    ```
 
 If the result is assigned to a `Client` variable, remove the variable declaration and replace it
-with the TODO comment.
+with the `TRANSMUTE[manual]` comment.
 
 ## HttpClientBuilder usages
 
 For each `new HttpClientBuilder(environment).build(...)` call:
 
 1. Remove the call expression.
-2. Add a TODO comment in its place:
+2. Add a `TRANSMUTE[manual]` comment in its place:
    ```java
-   // DW_MIGRATION_TODO[manual]: was HttpClientBuilder — use Helidon WebClient:
+   // TRANSMUTE[manual]: was HttpClientBuilder — use Helidon WebClient:
    // WebClient client = WebClient.create();
    // See: https://helidon.io/docs/v4/se/webclient
    ```
@@ -49,9 +49,9 @@ For each call chain involving `client.target(...)`, `target.path(...)`, `.reques
 `.post(...)`, etc. that stems from a Dropwizard-built client:
 
 1. Remove the call chain.
-2. Add a TODO comment showing the Helidon WebClient equivalent pattern:
+2. Add a `TRANSMUTE[manual]` comment showing the Helidon WebClient equivalent pattern:
    ```java
-   // DW_MIGRATION_TODO[manual]: was client.target(...).path(...).request().get() — use Helidon WebClient:
+   // TRANSMUTE[manual]: was client.target(...).path(...).request().get() — use Helidon WebClient:
    // HttpClientResponse response = client.get("https://...").request();
    // String body = response.as(String.class);
    // See: https://helidon.io/docs/v4/se/webclient
@@ -63,9 +63,9 @@ If the class declares a `JerseyClientConfiguration` or `HttpClientConfiguration`
 injected from the Dropwizard config class):
 
 1. Remove the field declaration and any associated getter/setter.
-2. Add a TODO comment:
+2. Add a `TRANSMUTE[manual]` comment:
    ```java
-   // DW_MIGRATION_TODO[manual]: was JerseyClientConfiguration/HttpClientConfiguration —
+   // TRANSMUTE[manual]: was JerseyClientConfiguration/HttpClientConfiguration —
    // configure Helidon WebClient via application.yaml under a custom key, e.g.:
    // webclient:
    //   connect-timeout-millis: 5000
@@ -78,13 +78,13 @@ If the class receives or injects `io.dropwizard.setup.Environment` solely to pas
 `JerseyClientBuilder` or `HttpClientBuilder`:
 
 1. Remove the `Environment` parameter or field.
-2. Add a TODO comment if `Environment` was also used for other purposes:
+2. Add a `TRANSMUTE[manual]` comment if `Environment` was also used for other purposes:
    ```java
-   // DW_MIGRATION_TODO[manual]: verify Environment was only used for client building — remove if so
+   // TRANSMUTE[manual]: verify Environment was only used for client building — remove if so
    ```
 
 If `Environment` is used for other purposes beyond client construction, do NOT remove it;
-add the TODO comment only.
+add the `TRANSMUTE[manual]` comment only.
 
 ## Imports
 

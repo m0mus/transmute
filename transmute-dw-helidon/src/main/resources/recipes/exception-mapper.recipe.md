@@ -28,11 +28,11 @@ Add `@RestServer.Endpoint` to the class so that it is discoverable as an HTTP se
 ## toResponse() method
 
 The `toResponse(E exception)` method cannot be directly retained — Helidon SE does not call
-this method automatically. Preserve the method body as a TODO comment so the developer can
+this method automatically. Preserve the method body as a `TRANSMUTE[manual]` comment so the developer can
 wire it into the routing:
 
 ```java
-// DW_MIGRATION_TODO[manual]: was ExceptionMapper<E> toResponse() — register as error handler in routing:
+// TRANSMUTE[manual]: was ExceptionMapper<E> toResponse() — register as error handler in routing:
 // routing.error(E.class, (req, res, ex) -> { /* original toResponse logic here */ });
 // Consider moving this logic to Main.routing() instead of keeping this class.
 ```
@@ -43,18 +43,18 @@ If the `toResponse` method has a simple body (e.g., return a fixed status and en
 the comment to show the Helidon equivalent inline:
 
 ```java
-// DW_MIGRATION_TODO[manual]: was ExceptionMapper<NotFoundException> — register in Main.routing():
+// TRANSMUTE[manual]: was ExceptionMapper<NotFoundException> — register in Main.routing():
 // routing.error(NotFoundException.class, (req, res, ex) -> res.status(404).send(ex.getMessage()));
 ```
 
-After adding the TODO comment, remove the `toResponse()` method body and signature entirely
+After adding the `TRANSMUTE[manual]` comment, remove the `toResponse()` method body and signature entirely
 (do not keep an empty or broken method).
 
 If the class becomes empty after the removal, keep the class declaration with only the
-`@Service.Singleton` and `@RestServer.Endpoint` annotations plus a class-level TODO comment:
+`@Service.Singleton` and `@RestServer.Endpoint` annotations plus a class-level `TRANSMUTE[manual]` comment:
 
 ```java
-// DW_MIGRATION_TODO[manual]: was ExceptionMapper<E> — class body removed; wire error handling in Main.routing()
+// TRANSMUTE[manual]: was ExceptionMapper<E> — class body removed; wire error handling in Main.routing()
 ```
 
 ## Imports
